@@ -17,12 +17,6 @@ case "$SECURITY" in
   *) SECURITY="WPA";;
 esac
 
-# Output network information
-echo "SSID: $SSID"
-echo "Password: $PASSWORD"
-echo "Security: $SECURITY"
-
 # Open Webiste
 URL="https://dandanilyuk.github.io/wifi_qr_generator/index.html?security=$SECURITY&ssid=$SSID&password=$PASSWORD"
-echo "URL: $URL"
 open $URL
