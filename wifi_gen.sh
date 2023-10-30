@@ -23,6 +23,6 @@ echo "Password: $PASSWORD"
 echo "Security: $SECURITY"
 
 # Open Webiste
-URL="http://dandanilyuk.github.io//index.html?security=$SECURITY&ssid=$SSID&password=$PASSWORD"
+URL="https://dandanilyuk.github.io/wifi_qr_generator/index.html?security=$SECURITY&ssid=$SSID&password=$PASSWORD"
 echo "URL: $URL"
 open $URL
