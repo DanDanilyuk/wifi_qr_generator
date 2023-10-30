@@ -1,0 +1,76 @@
+<!-- http://127.0.0.1:5500/index2.html?security=WPA&ssid=DANILYUK-5G&password=DANILYUKHOME&hidden=MyHiddenParameter -->
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QR Code Generator</title>
+    <script src="https://cdn.rawgit.com/davidshimjs/qrcodejs/gh-pages/qrcode.min.js"></script>
+  </head>
+  <body>
+    <h1>QR Code Generator</h1>
+
+    <form id="qr-form">
+      <label for="security">Security:</label>
+      <input type="text" id="security" name="security" value="WPA/WPA2" />
+
+      <label for="ssid">SSID:</label>
+      <input type="text" id="ssid" name="ssid" value="MyWiFiNetwork" />
+
+      <label for="password">Password:</label>
+      <input
+        type="password"
+        id="password"
+        name="password"
+        value="MySecretPassword"
+      />
+
+      <button type="button" id="generate">Generate QR Code</button>
+    </form>
+
+    <div id="qrcode"></div>
+
+    <script>
+      // Check if URL parameters are present
+      const urlParams = new URLSearchParams(window.location.search);
+      const securityParam = urlParams.get('security');
+      const ssidParam = urlParams.get('ssid');
+      const passwordParam = urlParams.get('password');
+      const hiddenParam = urlParams.get('hidden');
+
+      if (securityParam && ssidParam && passwordParam) {
+        // If parameters are present, hide the form and generate the QR code
+        document.getElementById('qr-form').style.display = 'none';
+
+        const wifiString = `WIFI:T:${securityParam};S:${ssidParam};P:${passwordParam};H:${hiddenParam};;`;
+
+        const qrcode = new QRCode(document.getElementById('qrcode'), {
+          text: wifiString,
+          width: 400,
+          height: 400,
+        });
+      } else {
+        // If parameters are not present, show the form
+        document.getElementById('qr-form').style.display = 'block';
+      }
+
+      document
+        .getElementById('generate')
+        .addEventListener('click', function () {
+          const security = document.getElementById('security').value;
+          const ssid = document.getElementById('ssid').value;
+          const password = document.getElementById('password').value;
+          const hidden = document.getElementById('hidden').value;
+
+          const wifiString = `WIFI:T:${security};S:${ssid};P:${password};H:${hidden};;`;
+
+          const qrcode = new QRCode(document.getElementById('qrcode'), {
+            text: wifiString,
+            width: 128,
+            height: 128,
+          });
+        });
+    </script>
+  </body>
+</html>
