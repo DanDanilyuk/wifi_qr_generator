@@ -39,11 +39,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
   document.getElementById('copy-command').addEventListener('click', function () {
     const command = document.getElementById('command');
-    const range = document.createRange();
-    range.selectNode(command);
-    window.getSelection().removeAllRanges();
-    window.getSelection().addRange(range);
-    document.execCommand('copy');
-    window.getSelection().removeAllRanges();
+    navigator.clipboard.writeText(command.innerText);
   });
 });
