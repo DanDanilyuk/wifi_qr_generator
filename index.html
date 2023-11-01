@@ -26,6 +26,9 @@
         value="MySecretPassword"
       />
 
+      <label for="hidden">Hidden:</label>
+      <input type="checkbox" id="hidden" name="hidden" value="true" />
+
       <button type="button" id="generate">Generate QR Code</button>
     </form>
 
@@ -61,7 +64,7 @@
           const security = document.getElementById('security').value;
           const ssid = document.getElementById('ssid').value;
           const password = document.getElementById('password').value;
-          const hidden = document.getElementById('hidden').value;
+          const hidden = document.getElementById('hidden').checked ? "true" : "false";
 
           const wifiString = `WIFI:T:${security};S:${ssid};P:${password};H:${hidden};;`;
 
