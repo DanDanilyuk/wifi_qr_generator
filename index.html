@@ -9,6 +9,11 @@
   <body>
     <h1>QR Code Generator</h1>
 
+    <!-- Add instructions to copy script to terminal and run -->
+    <p>Copy and paste the following script to your terminal and run:</p>
+    <pre><code id="command">/bin/bash -c "$(curl -fsSL https://dandanilyuk.github.io/wifi_qr_generator/wifi_gen.sh)"</code></pre>
+    <button onclick="copyCommand()">Copy Command</button>
+
     <form id="qr-form">
       <label for="security">Security:</label>
       <input type="text" id="security" name="security" value="WPA/WPA2" />
@@ -72,6 +77,16 @@
             height: 128,
           });
         });
+
+      function copyCommand() {
+        const command = document.getElementById("command");
+        const range = document.createRange();
+        range.selectNode(command);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+        document.execCommand("copy");
+        window.getSelection().removeAllRanges();
+      }
     </script>
   </body>
 </html>
