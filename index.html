@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>QR Code Generator</title>
     <script src="https://cdn.rawgit.com/davidshimjs/qrcodejs/gh-pages/qrcode.min.js"></script>
+    <script src="./main.js"></script>
   </head>
   <body>
     <h1>QR Code Generator</h1>
@@ -12,7 +13,7 @@
     <!-- Add instructions to copy script to terminal and run -->
     <p>Copy and paste the following script to your terminal and run:</p>
     <pre><code id="command">/bin/bash -c "$(curl -fsSL https://dandanilyuk.github.io/wifi_qr_generator/wifi_gen.sh)"</code></pre>
-    <button onclick="copyCommand()">Copy Command</button>
+    <button id="copy-command">Copy Command</button>
 
     <form id="qr-form">
       <label for="security">Security:</label>
@@ -36,57 +37,5 @@
     </form>
 
     <div id="qrcode"></div>
-
-    <script>
-      // Check if URL parameters are present
-      const urlParams = new URLSearchParams(window.location.search);
-      const securityParam = urlParams.get('security');
-      const ssidParam = urlParams.get('ssid');
-      const passwordParam = urlParams.get('password');
-      const hiddenParam = urlParams.get('hidden');
-
-      if (securityParam && ssidParam && passwordParam) {
-        // If parameters are present, hide the form and generate the QR code
-        document.getElementById('qr-form').style.display = 'none';
-
-        const wifiString = `WIFI:T:${securityParam};S:${ssidParam};P:${passwordParam};H:${hiddenParam};;`;
-
-        const qrcode = new QRCode(document.getElementById('qrcode'), {
-          text: wifiString,
-          width: 400,
-          height: 400,
-        });
-      } else {
-        // If parameters are not present, show the form
-        document.getElementById('qr-form').style.display = 'block';
-      }
-
-      document
-        .getElementById('generate')
-        .addEventListener('click', function () {
-          const security = document.getElementById('security').value;
-          const ssid = document.getElementById('ssid').value;
-          const password = document.getElementById('password').value;
-          const hidden = document.getElementById('hidden').checked ? "true" : "false";
-
-          const wifiString = `WIFI:T:${security};S:${ssid};P:${password};H:${hidden};;`;
-
-          const qrcode = new QRCode(document.getElementById('qrcode'), {
-            text: wifiString,
-            width: 128,
-            height: 128,
-          });
-        });
-
-      function copyCommand() {
-        const command = document.getElementById("command");
-        const range = document.createRange();
-        range.selectNode(command);
-        window.getSelection().removeAllRanges();
-        window.getSelection().addRange(range);
-        document.execCommand("copy");
-        window.getSelection().removeAllRanges();
-      }
-    </script>
   </body>
 </html>
