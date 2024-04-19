@@ -11,10 +11,10 @@ fi
 
 if [ "$OS" == "Mac" ]; then
     # Get the current SSID
-    SSID=$(networksetup -getairportnetwork en0 | awk -F': ' '{print $2}')
+    SSID=$(networksetup -getairportnetwork en0 | awk -F': ' '{print $2}' | sed 's/ /%20/g')
 
     # Retrieve the password
-    PASSWORD=$(security find-generic-password -D "AirPort network password" -wa "$SSID")
+    PASSWORD=$(security find-generic-password -D "AirPort network password" -wa "$SSID" | sed 's/ /%20/g')
 
     # Retrieve the security type and if the network is hidden
     AIRPORT_INFO=$(/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I)
