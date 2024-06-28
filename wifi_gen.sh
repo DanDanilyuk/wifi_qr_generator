@@ -10,20 +10,18 @@ elif [[ "$OSTYPE" == "cygwin" ]] || [[ "$OSTYPE" == "msys" ]]; then
 fi
 
 if [ "$OS" == "Mac" ]; then
-    # Get the current SSID
-    SSID=$(networksetup -getairportnetwork en0 | awk -F': ' '{print $2}' | sed 's/ /%20/g')
-
-    # Retrieve the password
-    PASSWORD=$(security find-generic-password -D "AirPort network password" -wa "$SSID" | sed 's/ /%20/g')
+    SSID=$(networksetup -getairportnetwork en0 | awk -F': ' '{print $2}')
+    URL_SSID=$(echo "$SSID" | sed 's/ /%20/g')
 
     # Retrieve the security type and if the network is hidden
-    AIRPORT_INFO=$(/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I)
+    AIRPORT_INFO=$(wdutil info)
     SECURITY=$(echo "$AIRPORT_INFO" | awk -F': ' '/^ *Security/ {print $2}')
     HIDDEN=$(echo "$AIRPORT_INFO" | awk -F': ' '/^ *Hidden network/ {print $2}')
 
     # Adjust the security type for the QR code
     case "$SECURITY" in
-      "WPA2 Personal") SECURITY="WPA";;
+      "WPA2 Personal") SECURITY="WPA2";;
+      "WPA2 Enterprise") SECURITY="WPA2";;
       "WEP") SECURITY="WEP";;
       "None") SECURITY="nopass";;
       *) SECURITY="WPA";;
@@ -36,8 +34,12 @@ if [ "$OS" == "Mac" ]; then
       *) HIDDEN="false";;
     esac
 
+    # Retrieve the password and encode it for the URL
+    PASSWORD=$(security find-generic-password -D "AirPort network password" -wa "$SSID" 2>/dev/null || echo "")
+    URL_PASSWORD=$(echo "$PASSWORD" | sed 's/ /%20/g')
+
     # Open Website
-    URL="https://dandanilyuk.github.io/wifi_qr_generator/index.html?security=$SECURITY&ssid=$SSID&password=$PASSWORD&hidden=$HIDDEN"
+    URL="https://dandanilyuk.github.io/wifi_qr_generator/index.html?security=$SECURITY&ssid=$URL_SSID&password=$URL_PASSWORD&hidden=$HIDDEN"
     open $URL
 elif [ "$OS" == "Windows" ]; then
     # Windows specific commands go here

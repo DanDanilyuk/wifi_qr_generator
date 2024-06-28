@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     height: 400,
   });
 
-  if (securityParam && ssidParam && passwordParam) {
+  if (securityParam && ssidParam) {
     qrForm.style.display = 'none';
     const wifiString = `WIFI:T:${securityParam};S:${ssidParam};P:${passwordParam};H:${hiddenParam};;`;
     qrcode.makeCode(wifiString);
