@@ -12,11 +12,12 @@ document.addEventListener('DOMContentLoaded', () => {
     os = 'linux';
   }
 
-  // For Windows, use the bash-based command (since wifi_gen.ps1 is not available).
+  // Set the command text based on OS.
+  // For Windows, use PowerShell to download and execute the .sh script.
   switch (os) {
     case 'windows':
       commandElement.innerText =
-        'bash -c "$(curl -fsSL https://dandanilyuk.github.io/wifi_qr_generator/wifi_gen.sh)"';
+        'powershell -Command "& {Invoke-WebRequest -Uri \'https://dandanilyuk.github.io/wifi_qr_generator/wifi_gen.sh\' -OutFile \\"$env:TEMP\\wifi_gen.sh\\"; bash \\"$env:TEMP\\wifi_gen.sh\\"}"';
       break;
     case 'linux':
       commandElement.innerText =
@@ -46,7 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const qrForm = document.getElementById('qr-form');
   const qrcodeContainer = document.getElementById('qrcode');
 
-  // Ensure the QR code container is centered.
+  // Center the QR code container.
   qrcodeContainer.style.margin = '2rem auto';
   qrcodeContainer.style.textAlign = 'center';
 
@@ -101,13 +102,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Generate Full-Page PDF with Wi-Fi details & QR code.
   document.getElementById('generate-pdf').addEventListener('click', () => {
-    // Get current Wi-Fi details.
     const security = document.getElementById('security').value;
     const ssid = document.getElementById('ssid').value;
     const password = document.getElementById('password').value;
     const hidden = document.getElementById('hidden').checked ? 'Yes' : 'No';
 
-    // Get the rendered canvas from QRCode.
     const canvas = qrcodeContainer.querySelector('canvas');
     if (!canvas) {
       alert('Please generate the QR code first.');
@@ -115,7 +114,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const imgData = canvas.toDataURL('image/png');
 
-    // Create a new PDF document.
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({
       orientation: 'portrait',
@@ -148,6 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
       170,
       { align: 'center' }
     );
-    pdf.save('WiFi_Details.pdf');
+
+    pdf.save('WiFi_Details.PDF');
   });
 });
