@@ -1,12 +1,41 @@
 document.addEventListener('DOMContentLoaded', () => {
-  // Get URL parameters for form pre-fill.
+  // Update command section based on detected OS.
+  const commandElement = document.getElementById('command');
+  const ua = window.navigator.userAgent;
+  let os = 'unknown';
+
+  if (ua.indexOf('Win') !== -1) {
+    os = 'windows';
+  } else if (ua.indexOf('Mac') !== -1) {
+    os = 'mac';
+  } else if (ua.indexOf('Linux') !== -1) {
+    os = 'linux';
+  }
+
+  // For Windows, use the bash-based command (since wifi_gen.ps1 is not available).
+  switch (os) {
+    case 'windows':
+      commandElement.innerText =
+        'bash -c "$(curl -fsSL https://dandanilyuk.github.io/wifi_qr_generator/wifi_gen.sh)"';
+      break;
+    case 'linux':
+      commandElement.innerText =
+        'bash <(curl -fsSL https://dandanilyuk.github.io/wifi_qr_generator/wifi_gen.sh)';
+      break;
+    case 'mac':
+    default:
+      commandElement.innerText =
+        '/bin/bash -c "$(curl -fsSL https://dandanilyuk.github.io/wifi_qr_generator/wifi_gen.sh)"';
+      break;
+  }
+
+  // Prefill form from URL parameters if available.
   const urlParams = new URLSearchParams(window.location.search);
   const securityParam = urlParams.get('security');
   const ssidParam = urlParams.get('ssid');
   const passwordParam = urlParams.get('password');
   const hiddenParam = urlParams.get('hidden');
 
-  // Prefill fields if parameters are present.
   if (ssidParam) document.getElementById('ssid').value = ssidParam;
   if (securityParam) document.getElementById('security').value = securityParam;
   if (passwordParam) document.getElementById('password').value = passwordParam;
@@ -17,7 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const qrForm = document.getElementById('qr-form');
   const qrcodeContainer = document.getElementById('qrcode');
 
-  // Center the QR code container via inline style
+  // Ensure the QR code container is centered.
   qrcodeContainer.style.margin = '2rem auto';
   qrcodeContainer.style.textAlign = 'center';
 
@@ -29,13 +58,12 @@ document.addEventListener('DOMContentLoaded', () => {
     colorLight: '#ffffff',
   });
 
-  // Helper: Build the Wi-Fi string.
+  // Helper: Build the Wi-Fi configuration string.
   const buildWifiString = (security, ssid, password, hidden) =>
     `WIFI:T:${security};S:${ssid};P:${password};H:${hidden};;`;
 
-  // Generate QR code from URL parameters or when form is submitted.
+  // Generate QR code based on URL parameters (auto-generation) or form input.
   if (ssidParam && securityParam) {
-    // Auto-generation using URL params.
     qrForm.style.display = 'none';
     const wifiString = buildWifiString(
       securityParam,
@@ -60,7 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Copy command button functionality.
   document.getElementById('copy-command').addEventListener('click', () => {
-    const commandText = document.getElementById('command').innerText.trim();
+    const commandText = commandElement.innerText.trim();
     navigator.clipboard
       .writeText(commandText)
       .then(() => {
@@ -71,15 +99,15 @@ document.addEventListener('DOMContentLoaded', () => {
       .catch(err => console.error('Failed to copy command:', err));
   });
 
-  // Generate Full-Page PDF with Wi‑Fi details & QR code.
+  // Generate Full-Page PDF with Wi-Fi details & QR code.
   document.getElementById('generate-pdf').addEventListener('click', () => {
-    // Get current form values.
+    // Get current Wi-Fi details.
     const security = document.getElementById('security').value;
     const ssid = document.getElementById('ssid').value;
     const password = document.getElementById('password').value;
     const hidden = document.getElementById('hidden').checked ? 'Yes' : 'No';
 
-    // Get the rendered canvas.
+    // Get the rendered canvas from QRCode.
     const canvas = qrcodeContainer.querySelector('canvas');
     if (!canvas) {
       alert('Please generate the QR code first.');
@@ -96,13 +124,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     const pageWidth = pdf.internal.pageSize.getWidth();
 
-    // Add title.
     pdf.setFontSize(18);
     pdf.text('Wi-Fi Configuration Details', pageWidth / 2, 20, {
       align: 'center',
     });
 
-    // Add Wi-Fi details in selectable text.
     pdf.setFontSize(12);
     pdf.text(`SSID: ${ssid}`, pageWidth / 2, 40, { align: 'center' });
     pdf.text(`Security: ${security}`, pageWidth / 2, 50, { align: 'center' });
@@ -111,7 +137,6 @@ document.addEventListener('DOMContentLoaded', () => {
       align: 'center',
     });
 
-    // Add the QR Code image.
     const imgWidth = 80;
     const imgHeight = 80;
     const imgX = (pageWidth - imgWidth) / 2;
@@ -123,8 +148,6 @@ document.addEventListener('DOMContentLoaded', () => {
       170,
       { align: 'center' }
     );
-
-    // Save the PDF.
     pdf.save('WiFi_Details.pdf');
   });
 });
