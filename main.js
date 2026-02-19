@@ -145,49 +145,92 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 5. PDF Generation Logic
   document.getElementById('generate-pdf').addEventListener('click', () => {
-    const security = document.getElementById('security').value;
     const ssid = document.getElementById('ssid').value || 'Network';
     const password = document.getElementById('password').value;
-    const hidden = document.getElementById('hidden').checked ? 'Yes' : 'No';
 
     const canvas = qrcodeContainer.querySelector('canvas');
     if (!canvas) return;
 
+    const truncate = (str, max) => str.length > max ? str.slice(0, max - 1) + '…' : str;
+
     const imgData = canvas.toDataURL('image/png');
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4',
-    });
-    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const W = pdf.internal.pageSize.getWidth();
+    const H = pdf.internal.pageSize.getHeight();
 
-    pdf.setFontSize(18);
-    pdf.text('Wi-Fi Configuration Details', pageWidth / 2, 20, {
-      align: 'center',
-    });
+    const lX = 35;
+    const rX = W - 35;
 
+    // ── Title ─────────────────────────────────────────────────────────
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(36);
+    pdf.setTextColor(15, 15, 15);
+    pdf.text('Wi-Fi', W / 2, 34, { align: 'center' });
+
+    pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(12);
-    pdf.text(`SSID: ${ssid}`, pageWidth / 2, 40, { align: 'center' });
-    pdf.text(`Security: ${security}`, pageWidth / 2, 50, { align: 'center' });
-    pdf.text(`Password: ${password}`, pageWidth / 2, 60, { align: 'center' });
-    pdf.text(`Hidden Network: ${hidden}`, pageWidth / 2, 70, {
-      align: 'center',
-    });
+    pdf.setTextColor(160, 160, 160);
+    pdf.text(truncate(ssid, 44), W / 2, 46, { align: 'center' });
 
-    const imgWidth = 80;
-    const imgHeight = 80;
-    const imgX = (pageWidth - imgWidth) / 2;
-    pdf.addImage(imgData, 'PNG', imgX, 80, imgWidth, imgHeight);
+    pdf.setDrawColor(220, 220, 220);
+    pdf.setLineWidth(0.3);
+    pdf.line(lX, 55, rX, 55);
 
-    pdf.text(
-      'If scanning fails, use the above details to connect manually.',
-      pageWidth / 2,
-      170,
-      { align: 'center' },
-    );
+    // ── QR Code ───────────────────────────────────────────────────────
+    const qrSize = 120;
+    const qrX = (W - qrSize) / 2;
+    const qrY = 65;
 
-    // Dynamically names the PDF based on the Wi-Fi name
-    pdf.save(`${ssid}_WiFi_Details.pdf`);
+    pdf.addImage(imgData, 'PNG', qrX, qrY, qrSize, qrSize);
+
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    pdf.setTextColor(185, 185, 185);
+    pdf.text('Point your camera here to connect', W / 2, qrY + qrSize + 10, { align: 'center' });
+
+    // ── Divider ───────────────────────────────────────────────────────
+    const divY = qrY + qrSize + 20;
+    pdf.setDrawColor(220, 220, 220);
+    pdf.setLineWidth(0.3);
+    pdf.line(lX, divY, rX, divY);
+
+    // ── Network row ───────────────────────────────────────────────────
+    const r1Y = divY + 16;
+
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    pdf.setTextColor(175, 175, 175);
+    pdf.text('NETWORK', lX, r1Y);
+
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(13);
+    pdf.setTextColor(20, 20, 20);
+    pdf.text(truncate(ssid, 36), rX, r1Y, { align: 'right' });
+
+    pdf.setDrawColor(235, 235, 235);
+    pdf.setLineWidth(0.2);
+    pdf.line(lX, r1Y + 6, rX, r1Y + 6);
+
+    // ── Password row ──────────────────────────────────────────────────
+    const r2Y = r1Y + 20;
+
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    pdf.setTextColor(175, 175, 175);
+    pdf.text('PASSWORD', lX, r2Y);
+
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(13);
+    pdf.setTextColor(20, 20, 20);
+    pdf.text(password ? truncate(password, 36) : '—', rX, r2Y, { align: 'right' });
+
+    // ── Footer ────────────────────────────────────────────────────────
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(7);
+    pdf.setTextColor(205, 205, 205);
+    pdf.text('dandanilyuk.com · Wi-Fi QR Generator', W / 2, H - 15, { align: 'center' });
+
+    pdf.save(`${ssid}_WiFi_QR.pdf`);
   });
 });
