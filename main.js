@@ -1,6 +1,8 @@
 // Dark mode detection and state persistence
 const savedTheme = localStorage.getItem('theme');
-const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+const systemPrefersDark = window.matchMedia(
+  '(prefers-color-scheme: dark)',
+).matches;
 if (savedTheme === 'dark' || (!savedTheme && systemPrefersDark)) {
   document.documentElement.setAttribute('data-theme', 'dark');
 } else {
@@ -151,11 +153,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const canvas = qrcodeContainer.querySelector('canvas');
     if (!canvas) return;
 
-    const truncate = (str, max) => str.length > max ? str.slice(0, max - 1) + '…' : str;
+    const truncate = (str, max) =>
+      str.length > max ? str.slice(0, max - 1) + '…' : str;
 
     const imgData = canvas.toDataURL('image/png');
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    });
     const W = pdf.internal.pageSize.getWidth();
     const H = pdf.internal.pageSize.getHeight();
 
@@ -187,7 +194,9 @@ document.addEventListener('DOMContentLoaded', () => {
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(8);
     pdf.setTextColor(185, 185, 185);
-    pdf.text('Point your camera here to connect', W / 2, qrY + qrSize + 10, { align: 'center' });
+    pdf.text('Point your camera here to connect', W / 2, qrY + qrSize + 10, {
+      align: 'center',
+    });
 
     // ── Divider ───────────────────────────────────────────────────────
     const divY = qrY + qrSize + 20;
@@ -223,13 +232,9 @@ document.addEventListener('DOMContentLoaded', () => {
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(13);
     pdf.setTextColor(20, 20, 20);
-    pdf.text(password ? truncate(password, 36) : '—', rX, r2Y, { align: 'right' });
-
-    // ── Footer ────────────────────────────────────────────────────────
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(7);
-    pdf.setTextColor(205, 205, 205);
-    pdf.text('dandanilyuk.com · Wi-Fi QR Generator', W / 2, H - 15, { align: 'center' });
+    pdf.text(password ? truncate(password, 36) : '—', rX, r2Y, {
+      align: 'right',
+    });
 
     pdf.save(`${ssid}_WiFi_QR.pdf`);
   });
