@@ -29,16 +29,21 @@ EOF
 
 # URL-encode for query string
 url_encode() {
-  local s="${1-}"
-  if have python3; then
-    python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$s"
-  elif have perl; then
-    perl -MURI::Escape -e 'print uri_escape($ARGV[0]);' "$s"
-  else
-    # Minimal fallback (better than nothing)
-    s=${s//%/%25}; s=${s// /%20}; s=${s//&/%26}; s=${s//+/%2B}; s=${s//\?/%3F}; s=${s//\#/%23}
-    printf "%s" "$s"
-  fi
+  local LC_ALL=C
+  local string="${1-}"
+  local strlen=${#string}
+  local encoded=""
+  local pos c o
+
+  for (( pos=0 ; pos<strlen ; pos++ )); do
+     c=${string:$pos:1}
+     case "$c" in
+        [-_.~a-zA-Z0-9] ) o="${c}" ;;
+        * ) printf -v o '%%%02X' "'$c" ;;
+     esac
+     encoded+="${o}"
+  done
+  printf '%s' "${encoded}"
 }
 
 generate_qr_url() {
