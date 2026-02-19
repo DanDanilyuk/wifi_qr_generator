@@ -145,7 +145,19 @@ document.addEventListener('DOMContentLoaded', () => {
       .catch(err => console.error('Failed to copy command:', err));
   });
 
-  // 5. PDF Generation Logic
+  // 5. Download QR Code Logic
+  document.getElementById('download-qr').addEventListener('click', () => {
+    const ssid = document.getElementById('ssid').value || 'Network';
+    const canvas = qrcodeContainer.querySelector('canvas');
+    if (!canvas) return;
+
+    const link = document.createElement('a');
+    link.download = `${ssid}_WiFi_QR.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  });
+
+  // 6. PDF Generation Logic
   document.getElementById('generate-pdf').addEventListener('click', () => {
     const ssid = document.getElementById('ssid').value || 'Network';
     const password = document.getElementById('password').value;
