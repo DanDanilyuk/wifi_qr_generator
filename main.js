@@ -1,19 +1,47 @@
+// Dark mode detection and state persistence
+const savedTheme = localStorage.getItem('theme');
+const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+if (savedTheme === 'dark' || (!savedTheme && systemPrefersDark)) {
+  document.documentElement.setAttribute('data-theme', 'dark');
+} else {
+  document.documentElement.setAttribute('data-theme', 'light');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-  // Update command section based on detected OS.
+  // Theme toggle icon logic
+  const themeBtn = document.getElementById('theme-toggle');
+  const moonIcon = document.getElementById('moon-icon');
+  const sunIcon = document.getElementById('sun-icon');
+
+  function updateIcons() {
+    if (document.documentElement.getAttribute('data-theme') === 'dark') {
+      moonIcon.style.display = 'none';
+      sunIcon.style.display = 'block';
+    } else {
+      moonIcon.style.display = 'block';
+      sunIcon.style.display = 'none';
+    }
+  }
+
+  updateIcons();
+
+  themeBtn.addEventListener('click', () => {
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
+    updateIcons();
+  });
+
+  // 1. Update command section based on detected OS
   const commandElement = document.getElementById('command');
   const ua = window.navigator.userAgent;
   let os = 'unknown';
 
-  if (ua.indexOf('Win') !== -1) {
-    os = 'windows';
-  } else if (ua.indexOf('Mac') !== -1) {
-    os = 'mac';
-  } else if (ua.indexOf('Linux') !== -1) {
-    os = 'linux';
-  }
+  if (ua.indexOf('Win') !== -1) os = 'windows';
+  else if (ua.indexOf('Mac') !== -1) os = 'mac';
+  else if (ua.indexOf('Linux') !== -1) os = 'linux';
 
-  // Set the command text based on OS.
-  // For Windows, use PowerShell to download and execute the .sh script.
   switch (os) {
     case 'windows':
       commandElement.innerText =
@@ -30,7 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
       break;
   }
 
-  // Prefill form from URL parameters if available.
+  // 2. Form & URL Parameter Setup
   const urlParams = new URLSearchParams(window.location.search);
   const securityParam = urlParams.get('security');
   const ssidParam = urlParams.get('ssid');
@@ -40,41 +68,49 @@ document.addEventListener('DOMContentLoaded', () => {
   if (ssidParam) document.getElementById('ssid').value = ssidParam;
   if (securityParam) document.getElementById('security').value = securityParam;
   if (passwordParam) document.getElementById('password').value = passwordParam;
-  if (hiddenParam) {
+  if (hiddenParam)
     document.getElementById('hidden').checked = hiddenParam === 'true';
-  }
 
   const qrForm = document.getElementById('qr-form');
   const qrcodeContainer = document.getElementById('qrcode');
+  const resultCard = document.querySelector('.result-card');
 
-  // Center the QR code container.
-  qrcodeContainer.style.margin = '2rem auto';
-  qrcodeContainer.style.textAlign = 'center';
+  // Strip old inline styles from previous JS logic
+  qrcodeContainer.style.margin = '';
+  qrcodeContainer.style.textAlign = '';
 
-  // Initialize the QRCode instance.
   const qrcode = new QRCode(qrcodeContainer, {
-    width: 400,
-    height: 400,
+    width: 280, // Optimized for mobile screens
+    height: 280,
     colorDark: '#000000',
     colorLight: '#ffffff',
   });
 
-  // Helper: Build the Wi-Fi configuration string.
   const buildWifiString = (security, ssid, password, hidden) =>
     `WIFI:T:${security};S:${ssid};P:${password};H:${hidden};;`;
 
-  // Generate QR code based on URL parameters (auto-generation) or form input.
+  // Helper to show the result card and smoothly scroll to it
+  const revealResults = () => {
+    resultCard.style.display = 'flex';
+    resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
+
+  // 3. Logic: Auto-generate from URL vs Manual Input
   if (ssidParam && securityParam) {
-    qrForm.style.display = 'none';
+    qrForm.style.display = 'none'; // Hide form if populated via URL
     const wifiString = buildWifiString(
       securityParam,
       ssidParam,
-      passwordParam,
-      hiddenParam
+      passwordParam || '',
+      hiddenParam || 'false',
     );
     qrcode.makeCode(wifiString);
+    revealResults();
   } else {
-    qrForm.style.display = 'block';
+    // Show form (using 'flex' to preserve new CSS layout)
+    qrForm.style.display = 'flex';
+    resultCard.style.display = 'none'; // Ensure result card starts hidden
+
     document.getElementById('generate').addEventListener('click', () => {
       const security = document.getElementById('security').value;
       const ssid = document.getElementById('ssid').value;
@@ -82,12 +118,19 @@ document.addEventListener('DOMContentLoaded', () => {
       const hidden = document.getElementById('hidden').checked
         ? 'true'
         : 'false';
+
+      if (!ssid) {
+        alert('Please provide a Network Name (SSID)');
+        return;
+      }
+
       const wifiString = buildWifiString(security, ssid, password, hidden);
       qrcode.makeCode(wifiString);
+      revealResults();
     });
   }
 
-  // Copy command button functionality.
+  // 4. Copy Command Logic
   document.getElementById('copy-command').addEventListener('click', () => {
     const commandText = commandElement.innerText.trim();
     navigator.clipboard
@@ -100,20 +143,17 @@ document.addEventListener('DOMContentLoaded', () => {
       .catch(err => console.error('Failed to copy command:', err));
   });
 
-  // Generate Full-Page PDF with Wi-Fi details & QR code.
+  // 5. PDF Generation Logic
   document.getElementById('generate-pdf').addEventListener('click', () => {
     const security = document.getElementById('security').value;
-    const ssid = document.getElementById('ssid').value;
+    const ssid = document.getElementById('ssid').value || 'Network';
     const password = document.getElementById('password').value;
     const hidden = document.getElementById('hidden').checked ? 'Yes' : 'No';
 
     const canvas = qrcodeContainer.querySelector('canvas');
-    if (!canvas) {
-      alert('Please generate the QR code first.');
-      return;
-    }
-    const imgData = canvas.toDataURL('image/png');
+    if (!canvas) return;
 
+    const imgData = canvas.toDataURL('image/png');
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({
       orientation: 'portrait',
@@ -144,9 +184,10 @@ document.addEventListener('DOMContentLoaded', () => {
       'If scanning fails, use the above details to connect manually.',
       pageWidth / 2,
       170,
-      { align: 'center' }
+      { align: 'center' },
     );
 
-    pdf.save('WiFi_Details.PDF');
+    // Dynamically names the PDF based on the Wi-Fi name
+    pdf.save(`${ssid}_WiFi_Details.pdf`);
   });
 });

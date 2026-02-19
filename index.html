@@ -4,49 +4,75 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QR Code Generator</title>
+  <title>Wi-Fi QR Generator</title>
   <link rel="stylesheet" href="styles.css" />
-  <!-- QRCodeJS -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <!-- jsPDF UMD build -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
   <script defer src="main.js"></script>
 </head>
 
 <body>
-  <h1>QR Code Generator</h1>
-  <p class="instructions">
-    Copy and paste the following script into your terminal and run:
-  </p>
-  <pre class="command-container">
-      <code id="command">
-        <!-- Command will be populated dynamically -->
-      </code>
-    </pre>
-  <button id="copy-command">Copy Command</button>
+  <div class="header-bar">
+    <h1>Wi-Fi QR Generator</h1>
+    <button id="theme-toggle" class="theme-toggle" aria-label="Toggle Dark Mode">
+      <svg id="moon-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+      </svg>
+      <svg id="sun-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+        style="display: none;">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+      </svg>
+    </button>
+  </div>
 
-  <form id="qr-form">
-    <label for="security">Security:</label>
-    <input type="text" id="security" name="security" value="WPA/WPA2" />
-
-    <label for="ssid">SSID:</label>
-    <input type="text" id="ssid" name="ssid" value="MyWiFiNetwork" />
-
-    <label for="password">Password:</label>
-    <input type="password" id="password" name="password" value="MySecretPassword" />
-
-    <div class="checkbox-group">
-      <label for="hidden">Hidden:</label>
-      <input type="checkbox" id="hidden" name="hidden" />
+  <div class="container">
+    <div class="card terminal-card">
+      <p class="instructions">Run this command to auto-detect your Wi-Fi and generate a QR code:</p>
+      <div class="code-block">
+        <code id="command"><!-- Command will be populated dynamically --></code>
+      </div>
+      <button id="copy-command" class="secondary-btn btn-sm">Copy Command</button>
     </div>
 
-    <button type="button" id="generate">Generate QR Code</button>
-  </form>
+    <form id="qr-form" class="card form-card">
+      <h2>Manual Configuration</h2>
 
-  <div id="qrcode"></div>
+      <div class="input-group">
+        <label for="ssid">Network Name (SSID)</label>
+        <input type="text" id="ssid" name="ssid" placeholder="MyWiFiNetwork" value="MyWiFiNetwork" />
+      </div>
 
-  <!-- PDF Generation button -->
-  <button type="button" id="generate-pdf">Generate Full-Page PDF</button>
+      <div class="input-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" placeholder="MySecretPassword" value="MySecretPassword" />
+      </div>
+
+      <div class="row">
+        <div class="input-group flex-1">
+          <label for="security">Security</label>
+          <input type="text" id="security" name="security" placeholder="WPA2" value="WPA/WPA2" />
+        </div>
+
+        <div class="checkbox-group">
+          <input type="checkbox" id="hidden" name="hidden" />
+          <label for="hidden">Hidden Network</label>
+        </div>
+      </div>
+
+      <button type="button" id="generate" class="primary-btn">Generate QR Code</button>
+    </form>
+
+    <!-- Hidden by default via inline style -->
+    <div class="card result-card" style="display: none;">
+      <div id="qrcode"></div>
+      <button type="button" id="generate-pdf" class="secondary-btn">Download Full-Page PDF</button>
+    </div>
+  </div>
+
+
 </body>
 
 </html>
