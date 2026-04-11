@@ -35,6 +35,23 @@ document.addEventListener('DOMContentLoaded', () => {
     updateIcons();
   });
 
+  // Password visibility toggle
+  const passwordInput = document.getElementById('password');
+  const toggleBtn = document.getElementById('toggle-password');
+  const eyeIcon = document.getElementById('eye-icon');
+  const eyeOffIcon = document.getElementById('eye-off-icon');
+
+  toggleBtn.addEventListener('click', () => {
+    const isHidden = passwordInput.type === 'password';
+    passwordInput.type = isHidden ? 'text' : 'password';
+    eyeIcon.style.display = isHidden ? 'none' : 'block';
+    eyeOffIcon.style.display = isHidden ? 'block' : 'none';
+    toggleBtn.setAttribute(
+      'aria-label',
+      isHidden ? 'Hide password' : 'Show password',
+    );
+  });
+
   // 1. Update command section based on detected OS
   const commandElement = document.getElementById('command');
   const ua = window.navigator.userAgent;
@@ -77,13 +94,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const qrcodeContainer = document.getElementById('qrcode');
   const resultCard = document.querySelector('.result-card');
 
-  // Strip old inline styles from previous JS logic
   qrcodeContainer.style.margin = '';
   qrcodeContainer.style.textAlign = '';
 
   const qrcode = new QRCode(qrcodeContainer, {
-    width: 280, // Optimized for mobile screens
-    height: 280,
+    width: 260,
+    height: 260,
     colorDark: '#000000',
     colorLight: '#ffffff',
   });
@@ -91,15 +107,32 @@ document.addEventListener('DOMContentLoaded', () => {
   const buildWifiString = (security, ssid, password, hidden) =>
     `WIFI:T:${security};S:${ssid};P:${password};H:${hidden};;`;
 
-  // Helper to show the result card and smoothly scroll to it
   const revealResults = () => {
     resultCard.style.display = 'flex';
     resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   };
 
+  const generateFromForm = () => {
+    const security = document.getElementById('security').value;
+    const ssid = document.getElementById('ssid').value;
+    const password = document.getElementById('password').value;
+    const hidden = document.getElementById('hidden').checked
+      ? 'true'
+      : 'false';
+
+    if (!ssid) {
+      document.getElementById('ssid').focus();
+      return;
+    }
+
+    const wifiString = buildWifiString(security, ssid, password, hidden);
+    qrcode.makeCode(wifiString);
+    revealResults();
+  };
+
   // 3. Logic: Auto-generate from URL vs Manual Input
   if (ssidParam && securityParam) {
-    qrForm.style.display = 'none'; // Hide form if populated via URL
+    qrForm.style.display = 'none';
     const wifiString = buildWifiString(
       securityParam,
       ssidParam,
@@ -109,38 +142,24 @@ document.addEventListener('DOMContentLoaded', () => {
     qrcode.makeCode(wifiString);
     revealResults();
   } else {
-    // Show form (using 'flex' to preserve new CSS layout)
     qrForm.style.display = 'flex';
-    resultCard.style.display = 'none'; // Ensure result card starts hidden
+    resultCard.style.display = 'none';
 
-    document.getElementById('generate').addEventListener('click', () => {
-      const security = document.getElementById('security').value;
-      const ssid = document.getElementById('ssid').value;
-      const password = document.getElementById('password').value;
-      const hidden = document.getElementById('hidden').checked
-        ? 'true'
-        : 'false';
-
-      if (!ssid) {
-        alert('Please provide a Network Name (SSID)');
-        return;
-      }
-
-      const wifiString = buildWifiString(security, ssid, password, hidden);
-      qrcode.makeCode(wifiString);
-      revealResults();
+    qrForm.addEventListener('submit', e => {
+      e.preventDefault();
+      generateFromForm();
     });
   }
 
   // 4. Copy Command Logic
   document.getElementById('copy-command').addEventListener('click', () => {
     const commandText = commandElement.innerText.trim();
+    const copyBtn = document.getElementById('copy-command');
     navigator.clipboard
       .writeText(commandText)
       .then(() => {
-        const copyButton = document.getElementById('copy-command');
-        copyButton.textContent = 'Copied!';
-        setTimeout(() => (copyButton.textContent = 'Copy Command'), 2000);
+        copyBtn.classList.add('copied');
+        setTimeout(() => copyBtn.classList.remove('copied'), 2000);
       })
       .catch(err => console.error('Failed to copy command:', err));
   });
@@ -166,7 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!canvas) return;
 
     const truncate = (str, max) =>
-      str.length > max ? str.slice(0, max - 1) + '…' : str;
+      str.length > max ? str.slice(0, max - 1) + '\u2026' : str;
 
     const imgData = canvas.toDataURL('image/png');
     const { jsPDF } = window.jspdf;
@@ -176,12 +195,11 @@ document.addEventListener('DOMContentLoaded', () => {
       format: 'a4',
     });
     const W = pdf.internal.pageSize.getWidth();
-    const H = pdf.internal.pageSize.getHeight();
 
     const lX = 35;
     const rX = W - 35;
 
-    // ── Title ─────────────────────────────────────────────────────────
+    // Title
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(36);
     pdf.setTextColor(15, 15, 15);
@@ -196,7 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
     pdf.setLineWidth(0.3);
     pdf.line(lX, 55, rX, 55);
 
-    // ── QR Code ───────────────────────────────────────────────────────
+    // QR Code
     const qrSize = 120;
     const qrX = (W - qrSize) / 2;
     const qrY = 65;
@@ -210,13 +228,13 @@ document.addEventListener('DOMContentLoaded', () => {
       align: 'center',
     });
 
-    // ── Divider ───────────────────────────────────────────────────────
+    // Divider
     const divY = qrY + qrSize + 20;
     pdf.setDrawColor(220, 220, 220);
     pdf.setLineWidth(0.3);
     pdf.line(lX, divY, rX, divY);
 
-    // ── Network row ───────────────────────────────────────────────────
+    // Network row
     const r1Y = divY + 16;
 
     pdf.setFont('helvetica', 'normal');
@@ -233,7 +251,7 @@ document.addEventListener('DOMContentLoaded', () => {
     pdf.setLineWidth(0.2);
     pdf.line(lX, r1Y + 6, rX, r1Y + 6);
 
-    // ── Password row ──────────────────────────────────────────────────
+    // Password row
     const r2Y = r1Y + 20;
 
     pdf.setFont('helvetica', 'normal');
@@ -244,7 +262,7 @@ document.addEventListener('DOMContentLoaded', () => {
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(13);
     pdf.setTextColor(20, 20, 20);
-    pdf.text(password ? truncate(password, 36) : '—', rX, r2Y, {
+    pdf.text(password ? truncate(password, 36) : '\u2014', rX, r2Y, {
       align: 'right',
     });
 
