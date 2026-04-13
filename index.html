@@ -36,16 +36,33 @@
   </header>
 
   <main class="container">
-    <form id="qr-form" class="card form-card">
+    <form id="qr-form" class="card form-card" novalidate>
       <div class="input-group">
         <label for="ssid">Network Name</label>
-        <input type="text" id="ssid" name="ssid" placeholder="e.g. My Home WiFi" required />
+        <input
+          type="text"
+          id="ssid"
+          name="ssid"
+          placeholder="e.g. My Home WiFi"
+          autocomplete="off"
+          autocapitalize="none"
+          spellcheck="false"
+          required
+        />
       </div>
 
       <div class="input-group">
         <label for="password">Password</label>
         <div class="password-wrapper">
-          <input type="password" id="password" name="password" placeholder="Enter password" />
+          <input
+            type="password"
+            id="password"
+            name="password"
+            placeholder="Enter password"
+            autocomplete="current-password"
+            autocapitalize="none"
+            spellcheck="false"
+          />
           <button type="button" id="toggle-password" class="password-toggle" aria-label="Show password">
             <svg id="eye-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
               stroke="currentColor">
@@ -61,16 +78,16 @@
             </svg>
           </button>
         </div>
+        <p id="password-help" class="form-hint">Protected networks need a password to scan and join.</p>
       </div>
 
       <div class="form-row">
         <div class="input-group">
           <label for="security">Security</label>
           <select id="security" name="security">
-            <option value="WPA">WPA / WPA2</option>
-            <option value="WPA">WPA</option>
+            <option value="WPA">WPA / WPA2 / WPA3</option>
             <option value="WEP">WEP</option>
-            <option value="nopass">None (Open)</option>
+            <option value="nopass">Open network</option>
           </select>
         </div>
 
@@ -80,22 +97,56 @@
         </label>
       </div>
 
+      <p id="security-help" class="form-hint">Open networks do not require a password.</p>
+      <div id="form-feedback" class="feedback" role="status" aria-live="polite" hidden></div>
       <button type="submit" id="generate" class="btn-generate">Generate QR Code</button>
     </form>
 
-    <div class="card result-card" style="display: none;">
-      <div class="qr-frame">
-        <div id="qrcode"></div>
-        <p class="scan-hint">Point your camera to connect</p>
+    <section class="card result-card" hidden>
+      <div class="result-header">
+        <div>
+          <p class="section-kicker">Ready to share</p>
+          <h2>Scan to connect</h2>
+        </div>
+        <p class="scan-hint">Point your camera at the QR code to join instantly.</p>
+      </div>
+      <div class="result-grid">
+        <div class="qr-frame">
+          <div id="qrcode"></div>
+        </div>
+        <div class="network-details" aria-label="Generated network details">
+          <div class="detail-row">
+            <span>Network</span>
+            <strong id="result-ssid">-</strong>
+          </div>
+          <div class="detail-row">
+            <span>Security</span>
+            <strong id="result-security">-</strong>
+          </div>
+          <div class="detail-row">
+            <span>Hidden</span>
+            <strong id="result-hidden">-</strong>
+          </div>
+          <div class="detail-row detail-row-password">
+            <span>Password</span>
+            <div class="detail-value-with-action">
+              <strong id="result-password">-</strong>
+              <button type="button" id="copy-password" class="inline-action">Copy</button>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="result-actions">
+        <button type="button" id="copy-link" class="btn-secondary">Copy Setup Link</button>
         <button type="button" id="download-qr" class="btn-secondary">Download QR Code</button>
         <button type="button" id="generate-pdf" class="btn-secondary">Download PDF</button>
       </div>
-    </div>
+      <p id="result-status" class="feedback feedback-inline" role="status" aria-live="polite" hidden></p>
+    </section>
 
     <div class="terminal-section">
-      <p class="terminal-label">Or auto-detect from terminal</p>
+      <p class="terminal-label">Auto-fill from terminal</p>
+      <p class="terminal-copy">Pull your current Wi-Fi details and open the app with everything prefilled.</p>
       <div class="terminal-window">
         <div class="terminal-chrome">
           <span class="terminal-dot dot-red"></span>
@@ -116,7 +167,7 @@
   </main>
 
   <footer>
-    <p>Made by <a href="https://www.dandanilyuk.com" target="_blank">Dan Danilyuk</a></p>
+    <p>Made by <a href="https://www.dandanilyuk.com" target="_blank" rel="noreferrer">Dan Danilyuk</a></p>
   </footer>
 </body>
 
