@@ -66,6 +66,11 @@ detect_os() {
   esac
 }
 
+print_manual_url_hint() {
+  echo "Could not open browser. Open this URL manually:" >&2
+  echo "$1" >&2
+}
+
 open_url() {
   local url="$1"
   local os="$2"
@@ -74,19 +79,19 @@ open_url() {
     Linux)
       if have xdg-open; then xdg-open "$url" >/dev/null 2>&1 || true
       elif have gio; then gio open "$url" >/dev/null 2>&1 || true
-      else echo "$url"
+      else print_manual_url_hint "$url"
       fi
       ;;
     Windows)
       if have powershell.exe; then
-        powershell.exe -NoProfile -Command "Start-Process '$url'" >/dev/null 2>&1 || echo "$url"
+        powershell.exe -NoProfile -Command "Start-Process '$url'" >/dev/null 2>&1 || print_manual_url_hint "$url"
       elif have cmd.exe; then
-        cmd.exe /c start "" "$url" >/dev/null 2>&1 || echo "$url"
+        cmd.exe /c start "" "$url" >/dev/null 2>&1 || print_manual_url_hint "$url"
       else
-        echo "$url"
+        print_manual_url_hint "$url"
       fi
       ;;
-    *) echo "$url" ;;
+    *) print_manual_url_hint "$url" ;;
   esac
 }
 
@@ -227,7 +232,7 @@ if [[ -z "${SSID}" || -z "${SECURITY}" || -z "${HIDDEN}" || ( -z "${PASSWORD}" &
 
       # If still missing, try Tahoe sudo unredact path
       if [[ -z "${SSID}" ]]; then
-        echo "macOS may require admin privileges to reveal SSID on this version."
+        echo "macOS is hiding the SSID. Requesting admin privileges to reveal it (you may be prompted for your password)." >&2
         if mac_try_unredact_with_sudo; then
           SSID="$(mac_ssid_from_ipconfig "$iface" || true)"
           # revert redaction setting if possible
@@ -235,7 +240,7 @@ if [[ -z "${SSID}" || -z "${SECURITY}" || -z "${HIDDEN}" || ( -z "${PASSWORD}" &
         fi
       fi
 
-      [[ -n "${SSID}" ]] || die "No active Wi‑Fi SSID detected."
+      [[ -n "${SSID}" ]] || die "Could not detect an active Wi-Fi SSID. Pass --ssid manually."
 
       # Security
       if [[ -z "${SECURITY}" ]]; then
