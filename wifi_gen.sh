@@ -8,6 +8,14 @@ APP_URL="https://dandanilyuk.github.io/wifi_qr_generator/index.html"
 die() { echo "Error: $*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
+RESTORE_VERBOSE=0
+cleanup() {
+  if [[ "${RESTORE_VERBOSE}" == "1" ]]; then
+    sudo -n ipconfig setverbose 0 >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup EXIT
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -145,9 +153,8 @@ sudo_run() {
 }
 
 mac_try_unredact_with_sudo() {
-  # Tahoe workaround: temporarily enable verbose to unredact SSID in ipconfig output.
-  # We'll also revert afterward.
   sudo_run ipconfig setverbose 1 >/dev/null 2>&1 || return 1
+  RESTORE_VERBOSE=1
   return 0
 }
 
@@ -235,8 +242,6 @@ if [[ -z "${SSID}" || -z "${SECURITY}" || -z "${HIDDEN}" || ( -z "${PASSWORD}" &
         echo "macOS is hiding the SSID. Requesting admin privileges to reveal it (you may be prompted for your password)." >&2
         if mac_try_unredact_with_sudo; then
           SSID="$(mac_ssid_from_ipconfig "$iface" || true)"
-          # revert redaction setting if possible
-          sudo_run ipconfig setverbose 0 >/dev/null 2>&1 || true
         fi
       fi
 
