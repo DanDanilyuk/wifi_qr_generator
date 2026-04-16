@@ -163,8 +163,12 @@ normalize_security() {
   local low
   low="$(printf "%s" "$raw" | tr '[:upper:]' '[:lower:]')"
   case "$low" in
+    *enterprise*|*802.1x*|*eap*)
+      echo "Warning: Enterprise/802.1x Wi-Fi networks generally cannot be joined from a QR code. Generating it anyway; the target device will likely need to be configured manually." >&2
+      echo "WPA2"
+      ;;
     *wpa3*|*sae*) echo "WPA3" ;;
-    *wpa2*|*personal*|*enterprise*|*802.1x*) echo "WPA2" ;;
+    *wpa2*|*wpa*|*personal*) echo "WPA2" ;;
     *wep*) echo "WEP" ;;
     *none*|*open*) echo "nopass" ;;
     "") echo "WPA" ;;
