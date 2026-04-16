@@ -63,12 +63,20 @@ generate_qr_url() {
     "$APP_URL" "$security" "$u_ssid" "$u_pass" "$hidden"
 }
 
+is_wsl() {
+  [[ -r /proc/version ]] && grep -qiE "(microsoft|wsl)" /proc/version 2>/dev/null
+}
+
 detect_os() {
   local u
   u="$(uname -s 2>/dev/null || echo unknown)"
   case "$u" in
     Darwin) echo "Mac" ;;
-    Linux) echo "Linux" ;;
+    Linux)
+      if is_wsl; then echo "Windows"
+      else echo "Linux"
+      fi
+      ;;
     CYGWIN*|MINGW*|MSYS*) echo "Windows" ;;
     *) echo "unknown" ;;
   esac
@@ -329,7 +337,7 @@ PS
           echo "" >&2
         fi
       else
-        die "Windows: powershell.exe not found; pass --ssid/--password/--security manually."
+        die "Windows/WSL: powershell.exe interop not available; pass --ssid/--password/--security manually."
       fi
       ;;
 
