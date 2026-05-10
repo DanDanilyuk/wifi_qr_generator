@@ -846,6 +846,10 @@ select {
   background: var(--accent-soft);
 }
 
+.detail-row[hidden] {
+  display: none;
+}
+
 .detail-row span {
   color: var(--text-muted);
   font-size: 0.8rem;
