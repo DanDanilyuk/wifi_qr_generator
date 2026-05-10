@@ -1,0 +1,359 @@
+.TH WIFI_GEN.SH 1 "2026-05-09" "wifi_gen.sh 0.1.0" "User Commands"
+.SH NAME
+wifi_gen.sh \- Generate a Wi-Fi connection QR code from current network
+.SH SYNOPSIS
+.B wifi_gen.sh
+.RI [ options ]
+.PP
+.B wifi_gen.sh
+.RB [ \-\-ssid
+.IR SSID ]
+.RB [ \-\-password
+.IR PASS\ |\ \- ]
+.RB [ \-\-security
+.IR TYPE ]
+.RB [ \-\-hidden
+.IR true|false ]
+.RB [ \-\-print ]
+.RB [ \-\-qr ]
+.RB [ \-\-copy ]
+.RB [ \-\-list\-networks ]
+.RB [ \-\-version ]
+.RB [ \-h\ |\ \-\-help ]
+.SH DESCRIPTION
+.B wifi_gen.sh
+auto-detects the currently associated Wi-Fi network on the host
+system, gathers its SSID, security type, hidden flag, and password,
+and produces a Wi-Fi QR code that other devices can scan to join the
+network. By default the script opens the rendered QR page in the
+system browser; alternative output modes include printing the URL,
+rendering an ASCII / UTF-8 QR directly in the terminal, and copying
+the URL to the clipboard.
+.PP
+The QR encoding uses the standard Wi-Fi QR scheme as understood by
+iOS, Android, and most modern camera apps. The rendered page is
+hosted at
+.UR https://dandanilyuk.github.io/wifi_qr_generator/
+https://dandanilyuk.github.io/wifi_qr_generator/
+.UE .
+.PP
+Supported platforms:
+.TP
+.B macOS
+Detection uses
+.BR networksetup (8),
+.BR ipconfig (8),
+.BR system_profiler (8),
+and the login Keychain via
+.BR security (1).
+On recent versions of macOS (Sonoma, Sequoia, Tahoe) the SSID may
+be redacted by default; the script will prompt for
+.BR sudo (8)
+to temporarily run
+.B ipconfig setverbose 1
+in order to reveal it.
+.TP
+.B Linux
+Detection uses NetworkManager via
+.BR nmcli (1).
+The active Wi-Fi connection's SSID, key-management type, and PSK
+are read directly from the connection profile.
+.TP
+.B Windows / WSL
+Detection uses
+.BR powershell.exe (1)
+and
+.BR netsh (1)
+("netsh wlan show interfaces" / "netsh wlan show profile
+name=<SSID> key=clear"). Both native Git Bash / MSYS / Cygwin and
+WSL (which routes through the Windows host) are supported.
+.SH OPTIONS
+.TP
+.BI \-\-ssid \  SSID
+Use the supplied SSID instead of auto-detecting it. Useful when the
+host is offline, when the active network is hidden, or when
+generating a QR for a network other than the one currently joined.
+.TP
+.BI \-\-password \  PASS
+Use the supplied pre-shared key. If the value is the single
+character
+.BR \- ,
+the password is read from standard input (one line). This avoids
+leaking the password through the process listing. See
+.B SECURITY
+below.
+.TP
+.BI \-\-pass \  PASS
+Alias for
+.BR \-\-password .
+.TP
+.BI \-\-security \  TYPE
+Force the security type. Accepted values:
+.BR WPA3 ,
+.BR WPA2 ,
+.BR WPA ,
+.BR WEP ,
+.BR nopass .
+Synonyms for
+.B nopass
+include
+.B none
+and
+.BR open .
+Enterprise / 802.1X variants are normalized to
+.B WPA2
+with a warning; see
+.BR LIMITATIONS .
+.TP
+.BI \-\-hidden \  true|false
+Mark the network as hidden in the resulting QR. When auto-detecting
+on macOS, the script will read the hidden flag from
+.BR wdutil (8)
+if available and if
+.BR sudo (8)
+can be acquired non-interactively. Otherwise the default is
+.BR false .
+.TP
+.B \-\-print
+Print the generated QR URL to standard output instead of opening it
+in a browser. Useful for piping into another tool or for headless /
+SSH sessions.
+.TP
+.B \-\-qr
+Render the QR code as an ASCII / UTF-8 block directly in the
+terminal. Requires
+.BR qrencode (1)
+to be installed. The terminal QR contains the same Wi-Fi payload as
+the URL form and can be scanned directly off the screen by another
+device.
+.TP
+.B \-\-copy
+Copy the generated URL to the system clipboard. Uses
+.BR pbcopy (1)
+on macOS,
+.BR wl-copy (1)
+or
+.BR xclip (1)
+or
+.BR xsel (1)
+on Linux, and
+.BR clip.exe
+on Windows / WSL.
+.TP
+.B \-\-list\-networks
+List the saved Wi-Fi networks known to the host (Keychain entries on
+macOS, NetworkManager connections on Linux, netsh profiles on
+Windows) and exit. No QR is generated. Combine with
+.BR \-\-ssid
+to generate a QR for any saved network without joining it first.
+.TP
+.B \-\-version
+Print the script version and exit.
+.TP
+.BR \-h ", " \-\-help
+Show usage and exit.
+.SH ENVIRONMENT
+.TP
+.B WIFI_PASSWORD
+If set and non-empty, this value is used as the network password and
+overrides any auto-detected value. It takes precedence over Keychain
+/ NetworkManager / netsh lookups, but is itself overridden by an
+explicit
+.BR \-\-password
+flag. This is the recommended way to supply the password
+non-interactively without exposing it in the process listing.
+.TP
+.B SUDO_ASKPASS
+On macOS, when the SSID is redacted and
+.B wifi_gen.sh
+needs to run
+.B ipconfig setverbose 1
+as root, it invokes
+.BR sudo (8).
+The standard
+.B SUDO_ASKPASS
+variable is honored by sudo for graphical password prompts. The
+verbose flag is reset to its previous value on script exit via a
+trap.
+.SH EXAMPLES
+.TP
+Auto-detect the current network and open the QR page in the default browser:
+.EX
+$ wifi_gen.sh
+.EE
+.TP
+Auto-detect the current network and print the QR URL to standard output:
+.EX
+$ wifi_gen.sh --print
+.EE
+.TP
+Generate a QR for a specific network without joining it:
+.EX
+$ wifi_gen.sh --ssid "GuestNet" --password "hunter2" --security WPA2
+.EE
+.TP
+Render the QR directly in the terminal (requires
+.BR qrencode (1)):
+.EX
+$ wifi_gen.sh --qr
+.EE
+.TP
+Copy the QR URL to the clipboard for pasting into a chat or document:
+.EX
+$ wifi_gen.sh --copy
+.EE
+.TP
+List saved networks, then generate a QR for one of them:
+.EX
+$ wifi_gen.sh --list-networks
+$ wifi_gen.sh --ssid "HomeNet" --print
+.EE
+.TP
+Pass the password securely via environment variable:
+.EX
+$ WIFI_PASSWORD='hunter2' wifi_gen.sh --ssid "GuestNet" --print
+.EE
+.TP
+Pass the password securely via standard input:
+.EX
+$ printf '%s' 'hunter2' | wifi_gen.sh --ssid "GuestNet" --password - --print
+.EE
+.SH FILES
+.TP
+.I /Library/Keychains/System.keychain
+.PD 0
+.TP
+.I ~/Library/Keychains/login.keychain-db
+.PD
+On macOS, Wi-Fi pre-shared keys are stored in the system or login
+Keychain and are read via
+.BR security\ find\-generic\-password (1).
+.TP
+.I /etc/NetworkManager/system\-connections/*.nmconnection
+On Linux with NetworkManager, saved Wi-Fi profiles (including PSKs)
+live in this directory. They are typically root-readable only and
+are accessed indirectly via
+.BR nmcli (1)
+with the
+.B \-s
+("show secrets") flag.
+.TP
+.I %ProgramData%\\Microsoft\\Wlansvc\\Profiles\\Interfaces\\
+On Windows, WLAN profiles are stored under this path and accessed
+via
+.BR netsh (1)
+("netsh wlan show profile name=<SSID> key=clear").
+.SH SECURITY
+.B wifi_gen.sh
+handles a Wi-Fi pre-shared key in plain text. The following
+precautions apply:
+.PP
+.B Avoid \-\-password VALUE on the command line.
+On most Unix systems the full argument list of every running
+process is visible to other users via
+.BR ps (1)
+or
+.IR /proc/<pid>/cmdline .
+Using
+.B \-\-password 'mysecret'
+therefore leaks the password to anyone with a shell on the host
+while the script is running. Prefer one of the following instead:
+.IP \[bu] 2
+.B WIFI_PASSWORD
+environment variable. This is read once at startup and never
+appears in the argument list. Prefix the command with the variable
+so it is scoped to a single invocation:
+.B WIFI_PASSWORD='secret' wifi_gen.sh ...
+.IP \[bu] 2
+.BR \-\-password\ \-
+to read the password from standard input. Pipe it in with
+.BR printf (1)
+or a password manager:
+.B printf '%s' "$(pass show wifi/home)" | wifi_gen.sh --password -
+.PP
+.B Generated URLs contain the password.
+The QR URL produced by
+.B \-\-print
+and
+.B \-\-copy
+encodes the password as a query-string parameter. Treat the URL
+itself as a secret: do not paste it into shared chat channels,
+public pastebins, browser history that syncs to the cloud, or
+shell history files. The hosted page renders the QR locally in the
+browser; the password is never sent to a server, but the URL is
+still sensitive in transit (anyone with the URL can render the
+same QR).
+.PP
+.B Keychain prompts.
+On macOS, reading a Wi-Fi password from the login Keychain via
+.BR security (1)
+will trigger the standard "Always Allow" / "Allow" dialog the
+first time. Choose carefully; "Always Allow" gives the script (and
+anyone who can run it) ongoing access to that Keychain item.
+.SH LIMITATIONS
+.TP
+.B Enterprise / 802.1X
+WPA-Enterprise (EAP, PEAP, EAP-TLS, etc.) networks cannot be
+joined from a Wi-Fi QR code. The Wi-Fi QR specification only
+encodes the personal-mode credentials (SSID, PSK, security type,
+hidden flag). When
+.B wifi_gen.sh
+detects an enterprise network it emits a warning, normalizes the
+security to
+.BR WPA2 ,
+and generates a QR anyway; the scanning device will most likely
+fail to associate and need to be configured manually with the
+enterprise profile.
+.TP
+.B Hidden-network heuristics on macOS
+The hidden-network flag is read from
+.BR wdutil (8)
+only when sudo is available non-interactively. Otherwise it
+defaults to
+.BR false .
+Pass
+.B \-\-hidden true
+explicitly if the target network is hidden.
+.TP
+.B Headless Linux without NetworkManager
+On Linux without
+.BR nmcli (1)
+(for example, systems using
+.BR wpa_supplicant (8)
+directly,
+.BR systemd\-networkd (8),
+or
+.BR iwd (8)
+without compatibility shims), auto-detection is not implemented.
+Pass
+.BR \-\-ssid ", " \-\-password ", and " \-\-security
+explicitly.
+.TP
+.B SSID character set
+The QR encoding handles UTF-8 SSIDs and special characters via URL
+encoding. However, some scanner apps mishandle SSIDs containing
+the literal characters
+.BR \\ ", " ; ", " , ", "
+or
+.BR " " .
+If a scan fails, try the
+.B \-\-print
+form and inspect the generated URL.
+.SH SEE ALSO
+.BR nmcli (1),
+.BR netsh (1),
+.BR networksetup (8),
+.BR security (1),
+.BR ipconfig (8),
+.BR wdutil (8),
+.BR qrencode (1),
+.BR pbcopy (1),
+.BR xclip (1),
+.BR wl-copy (1)
+.SH AUTHOR
+Dan Danilyuk
+.SH BUGS
+Report bugs at
+.UR https://github.com/danDanilyuk/wifi_qr_generator/issues
+https://github.com/danDanilyuk/wifi_qr_generator/issues
+.UE .
