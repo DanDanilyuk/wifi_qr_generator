@@ -1,0 +1,16 @@
+{
+  "name": "Wi-Fi QR Generator",
+  "short_name": "Wi-Fi QR",
+  "description": "Generate a QR code for your Wi-Fi network. Guests scan it to connect instantly.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f0ece3",
+  "theme_color": "#b84c12",
+  "orientation": "any",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
