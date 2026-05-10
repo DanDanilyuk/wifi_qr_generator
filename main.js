@@ -207,8 +207,8 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentResultState = null;
 
   const qrcode = new QRCode(refs.qrcodeContainer, {
-    width: 260,
-    height: 260,
+    width: 320,
+    height: 320,
     colorDark: '#000000',
     colorLight: '#ffffff',
   });
