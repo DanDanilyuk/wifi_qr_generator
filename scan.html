@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Scan-only Wi-Fi QR view. Lightweight read-only display for guest phones." />
+  <title>Wi-Fi QR - Scan</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📶</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+
+<body class="scan-only">
+  <header class="header-bar">
+    <div class="title-group">
+      <h1>Wi-Fi access</h1>
+      <p class="tagline">Scan to connect. No typing.</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card result-card scan-result-card">
+      <div class="result-header">
+        <div>
+          <p class="section-kicker">Ready to share</p>
+          <h2 id="scan-heading">Scan to connect</h2>
+        </div>
+        <p class="scan-hint">Point your camera at the QR code to join instantly.</p>
+      </div>
+      <div class="result-grid">
+        <div class="qr-frame">
+          <div id="qrcode"></div>
+        </div>
+        <div class="network-details" aria-label="Wi-Fi network details">
+          <div class="detail-row">
+            <span>Network</span>
+            <strong id="result-ssid">-</strong>
+          </div>
+          <div class="detail-row">
+            <span>Security</span>
+            <strong id="result-security">-</strong>
+          </div>
+          <div class="detail-row">
+            <span>Hidden</span>
+            <strong id="result-hidden">-</strong>
+          </div>
+          <div class="detail-row detail-row-password">
+            <span>Password</span>
+            <strong id="result-password">-</strong>
+          </div>
+        </div>
+      </div>
+      <div class="result-actions scan-actions">
+        <a id="open-editor" class="btn-secondary" href="index.html">Open editor</a>
+      </div>
+      <p id="scan-status" class="feedback feedback-inline" role="status" aria-live="polite" hidden></p>
+    </section>
+  </main>
+
+  <footer>
+    <p>Made by <a href="https://www.dandanilyuk.com" target="_blank" rel="noreferrer">Dan Danilyuk</a></p>
+  </footer>
+
+  <script>
+    (function () {
+      'use strict';
+
+      var SECURITY_LABELS = {
+        WPA: 'WPA / WPA2 / WPA3',
+        WEP: 'WEP',
+        nopass: 'Open network',
+      };
+
+      function normalizeSecurity(rawValue) {
+        var value = String(rawValue || '').trim().toLowerCase();
+
+        if (!value) {
+          return 'WPA';
+        }
+
+        if (value === 'nopass' || value.indexOf('open') !== -1 || value.indexOf('none') !== -1) {
+          return 'nopass';
+        }
+
+        if (value.indexOf('wep') !== -1) {
+          return 'WEP';
+        }
+
+        if (value.indexOf('wpa') !== -1) {
+          return 'WPA';
+        }
+
+        return 'WPA';
+      }
+
+      function escapeWifiValue(value) {
+        return String(value || '').replace(/([\\;,:"])/g, '\\$1');
+      }
+
+      function buildWifiString(state) {
+        var security = normalizeSecurity(state.security);
+        var parts = [
+          'WIFI:T:' + security + ';',
+          'S:' + escapeWifiValue(state.ssid) + ';',
+        ];
+
+        if (security !== 'nopass') {
+          parts.push('P:' + escapeWifiValue(state.password) + ';');
+        }
+
+        parts.push('H:' + (state.hidden ? 'true' : 'false') + ';');
+        parts.push(';');
+
+        return parts.join('');
+      }
+
+      function readFragmentParams() {
+        var hash = window.location.hash || '';
+        var raw = hash.charAt(0) === '#' ? hash.slice(1) : hash;
+        return new URLSearchParams(raw);
+      }
+
+      function setStatus(message, state) {
+        var el = document.getElementById('scan-status');
+
+        if (!el) {
+          return;
+        }
+
+        if (!message) {
+          el.hidden = true;
+          el.textContent = '';
+          delete el.dataset.state;
+          return;
+        }
+
+        el.hidden = false;
+        el.dataset.state = state || 'info';
+        el.textContent = message;
+      }
+
+      function showEmpty() {
+        var card = document.querySelector('.scan-result-card');
+        var heading = document.getElementById('scan-heading');
+        var qrFrame = document.querySelector('.qr-frame');
+        var details = document.querySelector('.network-details');
+
+        if (heading) {
+          heading.textContent = 'No Wi-Fi details provided';
+        }
+
+        if (qrFrame) {
+          qrFrame.hidden = true;
+        }
+
+        if (details) {
+          details.hidden = true;
+        }
+
+        if (card) {
+          card.classList.add('scan-empty');
+        }
+
+        setStatus(
+          'Open this page from a "Scan-only link" generated by the editor.',
+          'info',
+        );
+      }
+
+      function render(state) {
+        var qrContainer = document.getElementById('qrcode');
+        var resultSsid = document.getElementById('result-ssid');
+        var resultSecurity = document.getElementById('result-security');
+        var resultHidden = document.getElementById('result-hidden');
+        var resultPassword = document.getElementById('result-password');
+        var passwordRow = document.querySelector('.detail-row-password');
+        var security = normalizeSecurity(state.security);
+
+        new QRCode(qrContainer, {
+          text: buildWifiString(state),
+          width: 260,
+          height: 260,
+          colorDark: '#000000',
+          colorLight: '#ffffff',
+        });
+
+        if (resultSsid) {
+          resultSsid.textContent = state.ssid;
+        }
+
+        if (resultSecurity) {
+          resultSecurity.textContent = SECURITY_LABELS[security] || SECURITY_LABELS.WPA;
+        }
+
+        if (resultHidden) {
+          resultHidden.textContent = state.hidden ? 'Yes' : 'No';
+        }
+
+        if (resultPassword) {
+          if (security === 'nopass') {
+            resultPassword.textContent = 'No password';
+          } else if (state.password) {
+            resultPassword.textContent = state.password;
+          } else {
+            resultPassword.textContent = 'Not provided';
+          }
+        }
+
+        if (passwordRow && security === 'nopass') {
+          passwordRow.hidden = true;
+        }
+      }
+
+      function applyTheme() {
+        var saved = null;
+        try {
+          saved = localStorage.getItem('theme');
+        } catch (error) {
+          saved = null;
+        }
+        var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var theme = saved === 'dark' || (!saved && prefersDark) ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', theme);
+      }
+
+      function updateEditorLink(hash) {
+        var editorLink = document.getElementById('open-editor');
+        if (!editorLink) {
+          return;
+        }
+        editorLink.href = 'index.html' + (hash || '');
+      }
+
+      function init() {
+        applyTheme();
+
+        var params = readFragmentParams();
+        var ssid = params.get('ssid');
+
+        updateEditorLink(window.location.hash || '');
+
+        if (!ssid) {
+          showEmpty();
+          return;
+        }
+
+        var state = {
+          ssid: ssid,
+          security: normalizeSecurity(params.get('security') || 'WPA'),
+          password: params.get('password') || '',
+          hidden: params.get('hidden') === 'true',
+        };
+
+        render(state);
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+
+      window.addEventListener('hashchange', function () {
+        window.location.reload();
+      });
+    })();
+  </script>
+</body>
+
+</html>

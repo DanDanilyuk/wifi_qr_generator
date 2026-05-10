@@ -10,7 +10,13 @@ const QR_DEFAULT_PREFS = {
 };
 const VALID_CORRECT_LEVELS = ['L', 'M', 'Q', 'H'];
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
-
+const PDF_PREFS_KEY = 'wifi-qr:pdf-prefs';
+const PDF_LOGO_MAX_PERSIST_BYTES = 50 * 1024;
+const PDF_DEFAULT_TITLE = 'Wi-Fi access';
+const PDF_DEFAULT_SUBTITLE = 'Scan the QR code or enter the details below.';
+const JSQR_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/jsqr/1.4.0/jsQR.min.js';
+const JSQR_INTEGRITY =
+  'sha384-ZSs6LKr2GoUPDyHrN+rCQgyHL1yUyok5xMniSrgeRG7rUvA6vTmxronM1eZOfjgz';
 const SECURITY_CONFIG = {
   WPA: {
     label: 'WPA / WPA2',
@@ -210,6 +216,232 @@ function buildAppUrl(state, { includePassword } = { includePassword: false }) {
   nextUrl.hash = params.toString();
 
   return nextUrl.toString();
+}
+
+function parseWifiString(raw) {
+  if (typeof raw !== 'string') {
+    return null;
+  }
+
+  const trimmed = raw.trim();
+
+  if (!/^WIFI:/i.test(trimmed)) {
+    return null;
+  }
+
+  const body = trimmed.slice(5);
+  const fields = {};
+  let i = 0;
+  let key = null;
+  let value = '';
+  let readingKey = true;
+
+  while (i < body.length) {
+    const ch = body[i];
+
+    if (ch === '\\' && i + 1 < body.length) {
+      value += body[i + 1];
+      i += 2;
+      continue;
+    }
+
+    if (readingKey) {
+      if (ch === ':') {
+        key = value;
+        value = '';
+        readingKey = false;
+        i += 1;
+        continue;
+      }
+
+      if (ch === ';') {
+        key = null;
+        value = '';
+        readingKey = true;
+        i += 1;
+        continue;
+      }
+
+      value += ch;
+      i += 1;
+      continue;
+    }
+
+    if (ch === ';') {
+      if (key) {
+        fields[key.toUpperCase()] = value;
+      }
+      key = null;
+      value = '';
+      readingKey = true;
+      i += 1;
+      continue;
+    }
+
+    value += ch;
+    i += 1;
+  }
+
+  if (key && value) {
+    fields[key.toUpperCase()] = value;
+  }
+
+  if (!fields.S) {
+    return null;
+  }
+
+  return {
+    ssid: fields.S,
+    password: fields.P || '',
+    security: normalizeSecurity(fields.T || 'WPA'),
+    hidden: String(fields.H || '').toLowerCase() === 'true',
+  };
+}
+
+let jsqrLoadPromise = null;
+
+function loadJsQR() {
+  if (typeof window.jsQR === 'function') {
+    return Promise.resolve(window.jsQR);
+  }
+
+  if (jsqrLoadPromise) {
+    return jsqrLoadPromise;
+  }
+
+  jsqrLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = JSQR_SRC;
+    script.integrity = JSQR_INTEGRITY;
+    script.crossOrigin = 'anonymous';
+    script.referrerPolicy = 'no-referrer';
+    script.onload = () => {
+      if (typeof window.jsQR === 'function') {
+        resolve(window.jsQR);
+      } else {
+        jsqrLoadPromise = null;
+        reject(new Error('jsQR loaded but the global is missing.'));
+      }
+    };
+    script.onerror = () => {
+      jsqrLoadPromise = null;
+      reject(new Error('Unable to load the QR decoder.'));
+    };
+    document.head.appendChild(script);
+  });
+
+  return jsqrLoadPromise;
+}
+
+function loadImageBitmapFromFile(file) {
+  if (typeof createImageBitmap === 'function') {
+    return createImageBitmap(file);
+  }
+
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const url = URL.createObjectURL(file);
+
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Unable to read the image.'));
+    };
+    image.src = url;
+  });
+}
+
+function decodeQrFromImageData(imageData) {
+  return loadJsQR().then(jsQR => {
+    const result = jsQR(imageData.data, imageData.width, imageData.height);
+    return result ? result.data : null;
+  });
+}
+
+async function decodeQrFromFile(file) {
+  if ('BarcodeDetector' in window) {
+    try {
+      const formats = await window.BarcodeDetector.getSupportedFormats();
+
+      if (formats.includes('qr_code')) {
+        const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+        const bitmap = await loadImageBitmapFromFile(file);
+        const codes = await detector.detect(bitmap);
+
+        if (codes && codes.length) {
+          return codes[0].rawValue || null;
+        }
+      }
+    } catch (error) {
+      console.warn('BarcodeDetector failed, falling back to jsQR:', error);
+    }
+  }
+
+  const bitmap = await loadImageBitmapFromFile(file);
+  const canvas = document.createElement('canvas');
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const ctx = canvas.getContext('2d');
+
+  if (!ctx) {
+    throw new Error('Canvas 2D context unavailable.');
+  }
+
+  ctx.drawImage(bitmap, 0, 0);
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+  if (typeof bitmap.close === 'function') {
+    bitmap.close();
+  }
+
+  return decodeQrFromImageData(imageData);
+}
+
+function readPdfPrefs() {
+  try {
+    const raw = localStorage.getItem(PDF_PREFS_KEY);
+
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (error) {
+    console.warn('Unable to read PDF prefs from localStorage:', error);
+    return {};
+  }
+}
+
+function writePdfPrefs(prefs) {
+  try {
+    localStorage.setItem(PDF_PREFS_KEY, JSON.stringify(prefs));
+  } catch (error) {
+    console.warn('Unable to persist PDF prefs to localStorage:', error);
+  }
+}
+
+function buildScanUrl(state, { includePassword } = { includePassword: true }) {
+  const baseUrl = new URL('scan.html', window.location.href);
+  const params = new URLSearchParams();
+
+  params.set('ssid', state.ssid);
+  params.set('security', normalizeSecurity(state.security));
+  params.set('hidden', String(state.hidden));
+
+  if (
+    includePassword &&
+    normalizeSecurity(state.security) !== 'nopass' &&
+    state.password
+  ) {
+    params.set('password', state.password);
+  }
+
+  baseUrl.hash = params.toString();
+  return baseUrl.toString();
 }
 
 function copyWithFallback(text) {
@@ -441,6 +673,7 @@ document.addEventListener('DOMContentLoaded', () => {
     copyCommand: document.getElementById('copy-command'),
     copyLink: document.getElementById('copy-link'),
     copyPassword: document.getElementById('copy-password'),
+    copyScanLink: document.getElementById('copy-scan-link'),
     customizeFeedback: document.getElementById('qr-customize-feedback'),
     downloadQr: document.getElementById('download-qr'),
     eyeIcon: document.getElementById('eye-icon'),
@@ -448,9 +681,17 @@ document.addEventListener('DOMContentLoaded', () => {
     formFeedback: document.getElementById('form-feedback'),
     generatePdf: document.getElementById('generate-pdf'),
     hidden: document.getElementById('hidden'),
+    importQr: document.getElementById('import-qr'),
+    importQrFile: document.getElementById('import-qr-file'),
+    importStatus: document.getElementById('import-status'),
     moonIcon: document.getElementById('moon-icon'),
     password: document.getElementById('password'),
     passwordHelp: document.getElementById('password-help'),
+    pdfLogo: document.getElementById('pdf-logo'),
+    pdfLogoClear: document.getElementById('pdf-logo-clear'),
+    pdfLogoStatus: document.getElementById('pdf-logo-status'),
+    pdfSubtitle: document.getElementById('pdf-subtitle'),
+    pdfTitle: document.getElementById('pdf-title'),
     qrColorDark: document.getElementById('qr-color-dark'),
     qrColorLight: document.getElementById('qr-color-light'),
     qrColorsReset: document.getElementById('qr-colors-reset'),
@@ -475,6 +716,15 @@ document.addEventListener('DOMContentLoaded', () => {
     sunIcon: document.getElementById('sun-icon'),
     themeBtn: document.getElementById('theme-toggle'),
     togglePassword: document.getElementById('toggle-password'),
+  };
+
+  const pdfState = {
+    title: '',
+    subtitle: '',
+    logoDataUrl: null,
+    logoMime: null,
+    logoSize: 0,
+    logoName: null,
   };
 
   let hasGenerated = false;
@@ -985,6 +1235,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const qrSize = 88;
       const qrX = (pageWidth - qrSize) / 2;
       const qrY = 54;
+      const titleText = (pdfState.title || '').trim() || PDF_DEFAULT_TITLE;
+      const subtitleText =
+        (pdfState.subtitle || '').trim() || PDF_DEFAULT_SUBTITLE;
+      const logoDataUrl = pdfState.logoDataUrl;
 
       const isOpenNetwork =
         normalizeSecurity(currentResultState.security) === 'nopass';
@@ -1075,20 +1329,45 @@ document.addEventListener('DOMContentLoaded', () => {
       pdf.setLineWidth(0.5);
       pdf.roundedRect(cardX, cardY, cardWidth, cardHeight, 8, 8);
 
+      let titleY = 34;
+
+      if (logoDataUrl) {
+        try {
+          const logoFormat = inferPdfImageFormat(pdfState.logoMime, logoDataUrl);
+          const logoProps = pdf.getImageProperties(logoDataUrl);
+          const logoMaxWidth = 40;
+          const logoMaxHeight = 18;
+          const widthRatio = logoMaxWidth / logoProps.width;
+          const heightRatio = logoMaxHeight / logoProps.height;
+          const scale = Math.min(widthRatio, heightRatio);
+          const logoWidth = logoProps.width * scale;
+          const logoHeight = logoProps.height * scale;
+          const logoX = (pageWidth - logoWidth) / 2;
+          const logoY = 22;
+
+          pdf.addImage(
+            logoDataUrl,
+            logoFormat,
+            logoX,
+            logoY,
+            logoWidth,
+            logoHeight,
+          );
+          titleY = logoY + logoHeight + 8;
+        } catch (error) {
+          console.warn('Failed to embed logo in PDF:', error);
+        }
+      }
+
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(24);
       pdf.setTextColor(26, 23, 21);
-      pdf.text('Wi-Fi access', pageWidth / 2, 34, { align: 'center' });
+      pdf.text(titleText, pageWidth / 2, titleY, { align: 'center' });
 
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(11);
       pdf.setTextColor(140, 133, 124);
-      pdf.text(
-        'Scan the QR code or enter the details below.',
-        pageWidth / 2,
-        42,
-        { align: 'center' },
-      );
+      pdf.text(subtitleText, pageWidth / 2, titleY + 8, { align: 'center' });
 
       pdf.addImage(canvas.toDataURL('image/png'), 'PNG', qrX, qrY, qrSize, qrSize);
 
@@ -1137,6 +1416,265 @@ document.addEventListener('DOMContentLoaded', () => {
       setMessage(refs.resultStatus, 'PDF generation failed.', 'error');
     } finally {
       setPdfButtonLoading(false);
+    }
+  }
+
+  function inferPdfImageFormat(mimeType, dataUrl) {
+    const mime = (mimeType || '').toLowerCase();
+
+    if (mime.includes('jpeg') || mime.includes('jpg')) {
+      return 'JPEG';
+    }
+
+    if (mime.includes('png')) {
+      return 'PNG';
+    }
+
+    if (typeof dataUrl === 'string') {
+      if (dataUrl.startsWith('data:image/jpeg')) {
+        return 'JPEG';
+      }
+
+      if (dataUrl.startsWith('data:image/png')) {
+        return 'PNG';
+      }
+    }
+
+    return 'PNG';
+  }
+
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error || new Error('Read failed.'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function rasterizeSvgDataUrl(dataUrl, width, height) {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      const targetWidth = Math.max(1, Math.round(width || 320));
+      const targetHeight = Math.max(1, Math.round(height || 320));
+
+      image.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        const ctx = canvas.getContext('2d');
+
+        if (!ctx) {
+          reject(new Error('Canvas 2D context unavailable.'));
+          return;
+        }
+
+        ctx.drawImage(image, 0, 0, targetWidth, targetHeight);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      image.onerror = () => reject(new Error('Unable to rasterize SVG logo.'));
+      image.src = dataUrl;
+    });
+  }
+
+  function persistPdfPrefs() {
+    const prefs = {
+      title: pdfState.title || '',
+      subtitle: pdfState.subtitle || '',
+    };
+
+    if (pdfState.logoDataUrl && pdfState.logoSize <= PDF_LOGO_MAX_PERSIST_BYTES) {
+      prefs.logo = {
+        dataUrl: pdfState.logoDataUrl,
+        mime: pdfState.logoMime || 'image/png',
+        size: pdfState.logoSize || 0,
+        name: pdfState.logoName || null,
+      };
+    }
+
+    writePdfPrefs(prefs);
+  }
+
+  function updatePdfLogoStatus(message) {
+    if (!refs.pdfLogoStatus) {
+      return;
+    }
+    refs.pdfLogoStatus.textContent =
+      message || 'PNG, JPEG, or SVG. Resized to about 40mm wide.';
+  }
+
+  function updatePdfLogoUI() {
+    if (refs.pdfLogoClear) {
+      refs.pdfLogoClear.hidden = !pdfState.logoDataUrl;
+    }
+
+    if (pdfState.logoDataUrl) {
+      const sizeKb = (pdfState.logoSize / 1024).toFixed(1);
+      const label = pdfState.logoName
+        ? `${pdfState.logoName} (${sizeKb} KB)`
+        : `Logo loaded (${sizeKb} KB)`;
+      updatePdfLogoStatus(label);
+    } else {
+      updatePdfLogoStatus(null);
+    }
+  }
+
+  function clearPdfLogo() {
+    pdfState.logoDataUrl = null;
+    pdfState.logoMime = null;
+    pdfState.logoSize = 0;
+    pdfState.logoName = null;
+
+    if (refs.pdfLogo) {
+      refs.pdfLogo.value = '';
+    }
+
+    updatePdfLogoUI();
+    persistPdfPrefs();
+  }
+
+  async function handlePdfLogoChange(event) {
+    const file = event.target.files && event.target.files[0];
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      let dataUrl = await readFileAsDataUrl(file);
+      let mime = file.type || 'image/png';
+      let size = file.size || 0;
+
+      if (mime.includes('svg')) {
+        const rasterized = await rasterizeSvgDataUrl(dataUrl, 320, 320);
+        dataUrl = rasterized;
+        mime = 'image/png';
+        size = Math.ceil((rasterized.length * 3) / 4);
+      }
+
+      pdfState.logoDataUrl = dataUrl;
+      pdfState.logoMime = mime;
+      pdfState.logoSize = size;
+      pdfState.logoName = file.name || null;
+      updatePdfLogoUI();
+      persistPdfPrefs();
+    } catch (error) {
+      console.error('Failed to read logo image:', error);
+      updatePdfLogoStatus('Unable to read that image. Try another file.');
+    }
+  }
+
+  function loadPdfPrefsIntoUi() {
+    const prefs = readPdfPrefs();
+
+    if (prefs.title && refs.pdfTitle) {
+      pdfState.title = prefs.title;
+      refs.pdfTitle.value = prefs.title;
+    }
+
+    if (prefs.subtitle && refs.pdfSubtitle) {
+      pdfState.subtitle = prefs.subtitle;
+      refs.pdfSubtitle.value = prefs.subtitle;
+    }
+
+    if (prefs.logo && prefs.logo.dataUrl) {
+      pdfState.logoDataUrl = prefs.logo.dataUrl;
+      pdfState.logoMime = prefs.logo.mime || 'image/png';
+      pdfState.logoSize = prefs.logo.size || 0;
+      pdfState.logoName = prefs.logo.name || null;
+    }
+
+    updatePdfLogoUI();
+  }
+
+  async function handleImportQr(file) {
+    if (!file) {
+      return;
+    }
+
+    setMessage(refs.importStatus, 'Decoding QR code...', 'info');
+
+    try {
+      const raw = await decodeQrFromFile(file);
+
+      if (!raw) {
+        setMessage(
+          refs.importStatus,
+          'No QR code found in that image. Try a sharper photo.',
+          'error',
+        );
+        return;
+      }
+
+      const parsed = parseWifiString(raw);
+
+      if (!parsed) {
+        setMessage(
+          refs.importStatus,
+          'That QR code is not a Wi-Fi credential.',
+          'error',
+        );
+        return;
+      }
+
+      refs.ssid.value = parsed.ssid;
+      refs.password.value = parsed.password;
+      refs.security.value = parsed.security;
+      refs.hidden.checked = parsed.hidden;
+
+      updatePasswordFieldState();
+      const rendered = renderResult({ scrollIntoView: true });
+
+      if (rendered) {
+        setMessage(
+          refs.importStatus,
+          'Imported network details from the QR image.',
+          'success',
+        );
+      } else {
+        setMessage(refs.importStatus, '', 'info');
+      }
+    } catch (error) {
+      console.error('Failed to import QR image:', error);
+      setMessage(
+        refs.importStatus,
+        error && error.message
+          ? `Could not decode the image: ${error.message}`
+          : 'Could not decode the image.',
+        'error',
+      );
+    }
+  }
+
+  async function copyScanLink() {
+    const state = getFormState();
+    const validation = validateState(state);
+
+    if (!validation.valid) {
+      setMessage(refs.formFeedback, validation.message, 'error');
+      validation.field.focus();
+      return;
+    }
+
+    if (!currentResultState) {
+      renderResult();
+    }
+
+    const copied = await copyText(buildScanUrl(state, { includePassword: true }));
+    const isOpen = normalizeSecurity(state.security) === 'nopass';
+
+    setMessage(
+      refs.resultStatus,
+      copied
+        ? isOpen
+          ? 'Scan-only link copied.'
+          : 'Scan-only link copied. It includes the Wi-Fi password.'
+        : 'Unable to copy the scan link from this browser.',
+      copied ? 'success' : 'error',
+    );
+
+    if (copied) {
+      flashButton(refs.copyScanLink);
     }
   }
 
@@ -1286,6 +1824,7 @@ document.addEventListener('DOMContentLoaded', () => {
   updateContrastWarning();
   updateRememberPasswordVisibility();
   renderRecentNetworks();
+  loadPdfPrefsIntoUi();
   applyUrlParams();
 
   refs.themeBtn.addEventListener('click', () => {
@@ -1390,6 +1929,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  if (refs.copyScanLink) {
+    refs.copyScanLink.addEventListener('click', () => {
+      copyScanLink().catch(error => {
+        console.error('Failed to copy scan link:', error);
+        setMessage(
+          refs.resultStatus,
+          'Unable to copy the scan link from this browser.',
+          'error',
+        );
+      });
+    });
+  }
+
   if (refs.clearRecent) {
     refs.clearRecent.addEventListener('click', handleClearRecent);
   }
@@ -1446,6 +1998,53 @@ document.addEventListener('DOMContentLoaded', () => {
       saveQrPrefs(qrPrefs);
       applyQrPrefsToControls();
       regenerateIfShown();
+    });
+  }
+
+  if (refs.pdfTitle) {
+    refs.pdfTitle.addEventListener('input', () => {
+      pdfState.title = refs.pdfTitle.value;
+      persistPdfPrefs();
+    });
+  }
+
+  if (refs.pdfSubtitle) {
+    refs.pdfSubtitle.addEventListener('input', () => {
+      pdfState.subtitle = refs.pdfSubtitle.value;
+      persistPdfPrefs();
+    });
+  }
+
+  if (refs.pdfLogo) {
+    refs.pdfLogo.addEventListener('change', event => {
+      handlePdfLogoChange(event).catch(error => {
+        console.error('Failed to handle logo change:', error);
+      });
+    });
+  }
+
+  if (refs.pdfLogoClear) {
+    refs.pdfLogoClear.addEventListener('click', clearPdfLogo);
+  }
+
+  if (refs.importQr && refs.importQrFile) {
+    refs.importQr.addEventListener('click', () => {
+      setMessage(refs.importStatus, '');
+      refs.importQrFile.click();
+    });
+
+    refs.importQrFile.addEventListener('change', event => {
+      const file = event.target.files && event.target.files[0];
+      if (!file) {
+        return;
+      }
+      handleImportQr(file)
+        .catch(error => {
+          console.error('Import QR failed:', error);
+        })
+        .finally(() => {
+          event.target.value = '';
+        });
     });
   }
 });

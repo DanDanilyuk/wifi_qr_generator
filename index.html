@@ -120,6 +120,17 @@
       <p id="enterprise-help" class="form-hint">Enterprise / 802.1X networks aren't supported by Wi-Fi QR codes. The device receiving the scan must be configured manually.</p>
       <div id="form-feedback" class="feedback" role="status" aria-live="polite" hidden></div>
       <button type="submit" id="generate" class="btn-generate">Generate QR Code</button>
+      <div class="form-import">
+        <button type="button" id="import-qr" class="btn-tertiary">Import QR from image</button>
+        <input
+          type="file"
+          id="import-qr-file"
+          accept="image/*"
+          capture="environment"
+          hidden
+        />
+        <p id="import-status" class="feedback feedback-inline" role="status" aria-live="polite" hidden></p>
+      </div>
     </form>
 
     <section class="card result-card" hidden>
@@ -158,10 +169,51 @@
       </div>
       <div class="result-actions">
         <button type="button" id="copy-link" class="btn-secondary">Copy Setup Link</button>
+        <button type="button" id="copy-scan-link" class="btn-secondary">Copy Scan-only Link</button>
         <button type="button" id="download-qr" class="btn-secondary">Download QR Code</button>
         <button type="button" id="generate-pdf" class="btn-secondary">Download PDF</button>
         <button type="button" id="share-network" class="btn-secondary" hidden>Share</button>
       </div>
+      <details class="pdf-customize">
+        <summary>Customize PDF</summary>
+        <div class="pdf-customize-body">
+          <div class="input-group">
+            <label for="pdf-title">Title</label>
+            <input
+              type="text"
+              id="pdf-title"
+              name="pdf-title"
+              placeholder="Wi-Fi access"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+          <div class="input-group">
+            <label for="pdf-subtitle">Subtitle</label>
+            <input
+              type="text"
+              id="pdf-subtitle"
+              name="pdf-subtitle"
+              placeholder="Scan the QR code or enter the details below."
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+          <div class="input-group">
+            <label for="pdf-logo">Logo</label>
+            <div class="pdf-logo-controls">
+              <input
+                type="file"
+                id="pdf-logo"
+                name="pdf-logo"
+                accept="image/png,image/jpeg,image/svg+xml"
+              />
+              <button type="button" id="pdf-logo-clear" class="btn-tertiary" hidden>Remove logo</button>
+            </div>
+            <p id="pdf-logo-status" class="form-hint">PNG, JPEG, or SVG. Resized to about 40mm wide.</p>
+          </div>
+        </div>
+      </details>
       <p id="result-status" class="feedback feedback-inline" role="status" aria-live="polite" hidden></p>
 
       <details id="customize-qr" class="customize-qr">
