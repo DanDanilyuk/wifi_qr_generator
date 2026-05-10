@@ -232,6 +232,14 @@ async function copyText(text) {
   return copyWithFallback(text);
 }
 
+function debounce(fn, ms) {
+  let id;
+  return function (...args) {
+    clearTimeout(id);
+    id = setTimeout(() => fn.apply(this, args), ms);
+  };
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const refs = {
     command: document.getElementById('command'),
@@ -251,6 +259,7 @@ document.addEventListener('DOMContentLoaded', () => {
     qrForm: document.getElementById('qr-form'),
     resultCard: document.querySelector('.result-card'),
     resultHidden: document.getElementById('result-hidden'),
+    resultHiddenRow: document.getElementById('result-hidden-row'),
     resultPassword: document.getElementById('result-password'),
     resultSecurity: document.getElementById('result-security'),
     resultSsid: document.getElementById('result-ssid'),
@@ -377,11 +386,28 @@ document.addEventListener('DOMContentLoaded', () => {
     refs.resultSsid.textContent = state.ssid;
     refs.resultSecurity.textContent = getSecurityMeta(state.security).label;
     refs.resultHidden.textContent = state.hidden ? 'Yes' : 'No';
+    refs.resultHiddenRow.hidden = !state.hidden;
     refs.resultPassword.textContent =
       normalizeSecurity(state.security) === 'nopass'
         ? 'No password'
         : state.password;
     refs.copyPassword.hidden = normalizeSecurity(state.security) === 'nopass';
+  }
+
+  function markFieldInvalid(field) {
+    if (!field) {
+      return;
+    }
+
+    field.setAttribute('aria-invalid', 'true');
+    field.setAttribute('aria-describedby', 'form-feedback');
+  }
+
+  function clearFieldInvalid() {
+    [refs.ssid, refs.password].forEach(field => {
+      field.removeAttribute('aria-invalid');
+      field.removeAttribute('aria-describedby');
+    });
   }
 
   function revealResults({ scrollIntoView } = { scrollIntoView: false }) {
@@ -408,6 +434,8 @@ document.addEventListener('DOMContentLoaded', () => {
       hideResults();
       setMessage(refs.resultStatus, '');
       setMessage(refs.formFeedback, validation.message, 'error');
+      clearFieldInvalid();
+      markFieldInvalid(validation.field);
       return false;
     }
 
@@ -420,6 +448,7 @@ document.addEventListener('DOMContentLoaded', () => {
     hasGenerated = true;
     setMessage(refs.formFeedback, '');
     setMessage(refs.resultStatus, '');
+    clearFieldInvalid();
 
     return true;
   }
@@ -675,6 +704,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!validation.valid) {
       setMessage(refs.formFeedback, validation.message, 'error');
+      clearFieldInvalid();
+      markFieldInvalid(validation.field);
       validation.field.focus();
       return;
     }
@@ -733,12 +764,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  const debouncedRenderResult = debounce(() => {
+    renderResult();
+    setMessage(refs.resultStatus, '');
+  }, 150);
+
   function handleFormChange() {
     updatePasswordFieldState();
 
     if (hasGenerated) {
-      renderResult();
-      setMessage(refs.resultStatus, '');
+      debouncedRenderResult();
       return;
     }
 
@@ -747,6 +782,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (validation.valid) {
         setMessage(refs.formFeedback, '');
+        clearFieldInvalid();
       }
     }
   }
@@ -825,6 +861,7 @@ document.addEventListener('DOMContentLoaded', () => {
       'aria-label',
       isHidden ? 'Hide password' : 'Show password',
     );
+    refs.togglePassword.setAttribute('aria-pressed', String(isHidden));
   });
 
   refs.qrForm.addEventListener('submit', event => {
@@ -872,4 +909,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
   refs.downloadQr.addEventListener('click', downloadQrPng);
   refs.generatePdf.addEventListener('click', downloadPdfCard);
+
+  document.addEventListener('keydown', event => {
+    const target = event.target;
+    const inField =
+      target instanceof Element &&
+      target.matches('input, textarea, select');
+
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+      event.preventDefault();
+      refs.ssid.focus();
+      refs.ssid.select?.();
+      return;
+    }
+
+    if (event.key === '/' && !inField && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      event.preventDefault();
+      refs.ssid.focus();
+      refs.ssid.select?.();
+      return;
+    }
+
+    if (event.key === 'Escape' && inField) {
+      target.blur();
+    }
+  });
 });
