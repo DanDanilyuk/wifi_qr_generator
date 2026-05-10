@@ -1,0 +1,16 @@
+{
+  "name": "wifi-qr-generator",
+  "version": "1.0.0",
+  "description": "Generate Wi-Fi connection QR codes from a static page or shell helper.",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "lint": "eslint main.js",
+    "format": "prettier --write 'main.js' 'styles.css' 'index.html'",
+    "format:check": "prettier --check 'main.js' 'styles.css' 'index.html'"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0"
+  }
+}

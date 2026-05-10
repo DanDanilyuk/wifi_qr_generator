@@ -1,0 +1,23 @@
+{
+  "root": true,
+  "env": {
+    "browser": true,
+    "es2022": true,
+    "node": true
+  },
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "script"
+  },
+  "rules": {
+    "no-unused-vars": "warn",
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "eqeqeq": "error",
+    "no-var": "error",
+    "prefer-const": "warn"
+  },
+  "globals": {
+    "QRCode": "readonly",
+    "jspdf": "readonly"
+  }
+}
