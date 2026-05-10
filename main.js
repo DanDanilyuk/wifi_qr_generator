@@ -1,5 +1,16 @@
 const THEME_KEY = 'theme';
 const THEME_ATTRIBUTE = 'data-theme';
+const RECENT_NETWORKS_KEY = 'wifi-qr:recent-networks';
+const RECENT_NETWORKS_LIMIT = 5;
+const QR_PREFS_KEY = 'wifi-qr:qr-prefs';
+const QR_DEFAULT_PREFS = {
+  correctLevel: 'M',
+  colorDark: '#000000',
+  colorLight: '#ffffff',
+};
+const VALID_CORRECT_LEVELS = ['L', 'M', 'Q', 'H'];
+const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+
 const SECURITY_CONFIG = {
   WPA: {
     label: 'WPA / WPA2',
@@ -240,12 +251,197 @@ function debounce(fn, ms) {
   };
 }
 
+function loadRecentNetworks() {
+  try {
+    const raw = localStorage.getItem(RECENT_NETWORKS_KEY);
+
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw);
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .filter(entry => entry && typeof entry.ssid === 'string' && entry.ssid)
+      .slice(0, RECENT_NETWORKS_LIMIT)
+      .map(entry => ({
+        ssid: entry.ssid,
+        security: normalizeSecurity(entry.security || 'WPA'),
+        hidden: Boolean(entry.hidden),
+        savedAt: typeof entry.savedAt === 'number' ? entry.savedAt : Date.now(),
+        password: typeof entry.password === 'string' ? entry.password : '',
+      }));
+  } catch (error) {
+    console.error('Failed to read recent networks:', error);
+    return [];
+  }
+}
+
+function persistRecentNetworks(entries) {
+  try {
+    localStorage.setItem(RECENT_NETWORKS_KEY, JSON.stringify(entries));
+  } catch (error) {
+    console.error('Failed to persist recent networks:', error);
+  }
+}
+
+function saveRecentNetwork(state, { rememberPassword = false } = {}) {
+  if (!state || !state.ssid) {
+    return [];
+  }
+
+  const security = normalizeSecurity(state.security);
+  const includePassword =
+    rememberPassword &&
+    security !== 'nopass' &&
+    typeof state.password === 'string' &&
+    state.password.length > 0;
+  const entry = {
+    ssid: state.ssid,
+    security,
+    hidden: Boolean(state.hidden),
+    savedAt: Date.now(),
+  };
+
+  if (includePassword) {
+    entry.password = state.password;
+  }
+
+  const existing = loadRecentNetworks();
+  const filtered = existing.filter(item => {
+    return !(
+      item.ssid === entry.ssid &&
+      normalizeSecurity(item.security) === security
+    );
+  });
+  const next = [entry, ...filtered].slice(0, RECENT_NETWORKS_LIMIT);
+
+  persistRecentNetworks(next);
+
+  return next;
+}
+
+function clearRecentNetworks() {
+  try {
+    localStorage.removeItem(RECENT_NETWORKS_KEY);
+  } catch (error) {
+    console.error('Failed to clear recent networks:', error);
+  }
+}
+
+function loadQrPrefs() {
+  try {
+    const raw = localStorage.getItem(QR_PREFS_KEY);
+
+    if (!raw) {
+      return { ...QR_DEFAULT_PREFS };
+    }
+
+    const parsed = JSON.parse(raw);
+
+    return {
+      correctLevel: VALID_CORRECT_LEVELS.includes(parsed?.correctLevel)
+        ? parsed.correctLevel
+        : QR_DEFAULT_PREFS.correctLevel,
+      colorDark: HEX_COLOR_PATTERN.test(parsed?.colorDark || '')
+        ? parsed.colorDark
+        : QR_DEFAULT_PREFS.colorDark,
+      colorLight: HEX_COLOR_PATTERN.test(parsed?.colorLight || '')
+        ? parsed.colorLight
+        : QR_DEFAULT_PREFS.colorLight,
+    };
+  } catch (error) {
+    console.error('Failed to read QR preferences:', error);
+    return { ...QR_DEFAULT_PREFS };
+  }
+}
+
+function saveQrPrefs(prefs) {
+  try {
+    localStorage.setItem(QR_PREFS_KEY, JSON.stringify(prefs));
+  } catch (error) {
+    console.error('Failed to persist QR preferences:', error);
+  }
+}
+
+function getCorrectLevelConstant(level) {
+  if (typeof QRCode === 'undefined' || !QRCode.CorrectLevel) {
+    return undefined;
+  }
+
+  return QRCode.CorrectLevel[level] ?? QRCode.CorrectLevel.H;
+}
+
+function hexToRgb(hex) {
+  if (!HEX_COLOR_PATTERN.test(hex)) {
+    return null;
+  }
+
+  const value = hex.slice(1);
+
+  return {
+    r: parseInt(value.slice(0, 2), 16),
+    g: parseInt(value.slice(2, 4), 16),
+    b: parseInt(value.slice(4, 6), 16),
+  };
+}
+
+function relativeLuminance({ r, g, b }) {
+  const channel = component => {
+    const ratio = component / 255;
+
+    return ratio <= 0.03928
+      ? ratio / 12.92
+      : Math.pow((ratio + 0.055) / 1.055, 2.4);
+  };
+
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+}
+
+function contrastRatio(hexA, hexB) {
+  const rgbA = hexToRgb(hexA);
+  const rgbB = hexToRgb(hexB);
+
+  if (!rgbA || !rgbB) {
+    return 1;
+  }
+
+  const lumA = relativeLuminance(rgbA);
+  const lumB = relativeLuminance(rgbB);
+  const lighter = Math.max(lumA, lumB);
+  const darker = Math.min(lumA, lumB);
+
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+async function canvasToPngFile(canvas, filename) {
+  if (!canvas) {
+    return null;
+  }
+
+  const blob = await new Promise(resolve => {
+    canvas.toBlob(resolve, 'image/png');
+  });
+
+  if (!blob) {
+    return null;
+  }
+
+  return new File([blob], filename, { type: 'image/png' });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const refs = {
+    clearRecent: document.getElementById('clear-recent'),
     command: document.getElementById('command'),
     copyCommand: document.getElementById('copy-command'),
     copyLink: document.getElementById('copy-link'),
     copyPassword: document.getElementById('copy-password'),
+    customizeFeedback: document.getElementById('qr-customize-feedback'),
     downloadQr: document.getElementById('download-qr'),
     eyeIcon: document.getElementById('eye-icon'),
     eyeOffIcon: document.getElementById('eye-off-icon'),
@@ -255,8 +451,16 @@ document.addEventListener('DOMContentLoaded', () => {
     moonIcon: document.getElementById('moon-icon'),
     password: document.getElementById('password'),
     passwordHelp: document.getElementById('password-help'),
+    qrColorDark: document.getElementById('qr-color-dark'),
+    qrColorLight: document.getElementById('qr-color-light'),
+    qrColorsReset: document.getElementById('qr-colors-reset'),
+    qrCorrectLevel: document.getElementById('qr-correct-level'),
     qrcodeContainer: document.getElementById('qrcode'),
     qrForm: document.getElementById('qr-form'),
+    recentList: document.getElementById('recent-networks-list'),
+    recentNetworks: document.getElementById('recent-networks'),
+    rememberPassword: document.getElementById('remember-password'),
+    rememberPasswordField: document.getElementById('remember-password-field'),
     resultCard: document.querySelector('.result-card'),
     resultHidden: document.getElementById('result-hidden'),
     resultHiddenRow: document.getElementById('result-hidden-row'),
@@ -266,6 +470,7 @@ document.addEventListener('DOMContentLoaded', () => {
     resultStatus: document.getElementById('result-status'),
     security: document.getElementById('security'),
     securityHelp: document.getElementById('security-help'),
+    shareNetwork: document.getElementById('share-network'),
     ssid: document.getElementById('ssid'),
     sunIcon: document.getElementById('sun-icon'),
     themeBtn: document.getElementById('theme-toggle'),
@@ -274,13 +479,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let hasGenerated = false;
   let currentResultState = null;
+  let qrPrefs = loadQrPrefs();
+  let qrcode = createQrCode(qrPrefs);
 
-  const qrcode = new QRCode(refs.qrcodeContainer, {
-    width: 320,
-    height: 320,
-    colorDark: '#000000',
-    colorLight: '#ffffff',
-  });
+  function createQrCode(prefs) {
+    refs.qrcodeContainer.innerHTML = '';
+
+    return new QRCode(refs.qrcodeContainer, {
+      width: 320,
+      height: 320,
+      colorDark: prefs.colorDark,
+      colorLight: prefs.colorLight,
+      correctLevel: getCorrectLevelConstant(prefs.correctLevel),
+    });
+  }
+
+  function reinitQrCode() {
+    qrcode = createQrCode(qrPrefs);
+  }
 
   function updateThemeToggle() {
     const isDark =
@@ -380,6 +596,7 @@ document.addEventListener('DOMContentLoaded', () => {
     refs.securityHelp.textContent = isOpenNetwork
       ? 'Open networks let guests join immediately after scanning.'
       : 'Choose the same security mode your router uses.';
+    updateRememberPasswordVisibility();
   }
 
   function updateResultCard(state) {
@@ -426,7 +643,223 @@ document.addEventListener('DOMContentLoaded', () => {
     currentResultState = null;
   }
 
-  function renderResult({ scrollIntoView = false } = {}) {
+  function applyStateToForm(entry) {
+    if (!entry) {
+      return;
+    }
+
+    refs.ssid.value = entry.ssid || '';
+    refs.security.value = normalizeSecurity(entry.security || 'WPA');
+    refs.hidden.checked = Boolean(entry.hidden);
+
+    if (typeof entry.password === 'string' && entry.password.length > 0) {
+      refs.password.value = entry.password;
+
+      if (refs.rememberPassword) {
+        refs.rememberPassword.checked = true;
+      }
+    } else {
+      refs.password.value = '';
+
+      if (refs.rememberPassword) {
+        refs.rememberPassword.checked = false;
+      }
+    }
+
+    updatePasswordFieldState();
+    updateRememberPasswordVisibility();
+  }
+
+  function renderRecentNetworks() {
+    if (!refs.recentNetworks || !refs.recentList) {
+      return;
+    }
+
+    const entries = loadRecentNetworks();
+
+    refs.recentList.innerHTML = '';
+
+    if (entries.length === 0) {
+      refs.recentNetworks.hidden = true;
+      return;
+    }
+
+    refs.recentNetworks.hidden = false;
+
+    entries.forEach(entry => {
+      const pill = document.createElement('button');
+
+      pill.type = 'button';
+      pill.className = 'recent-pill';
+      pill.dataset.savedAt = String(entry.savedAt);
+      pill.setAttribute(
+        'aria-label',
+        `Use ${entry.ssid} (${getSecurityMeta(entry.security).label})`,
+      );
+
+      const name = document.createElement('span');
+
+      name.className = 'recent-pill-name';
+      name.textContent = entry.ssid;
+      pill.appendChild(name);
+
+      const badge = document.createElement('span');
+
+      badge.className = 'recent-pill-badge';
+
+      if (entry.password) {
+        badge.dataset.savedPassword = 'true';
+        badge.textContent = 'saved';
+        badge.title = 'Password stored locally in this browser.';
+      } else if (normalizeSecurity(entry.security) === 'nopass') {
+        badge.textContent = 'open';
+      } else {
+        badge.textContent = normalizeSecurity(entry.security);
+      }
+
+      pill.appendChild(badge);
+
+      pill.addEventListener('click', () => {
+        applyStateToForm(entry);
+        renderResult({ scrollIntoView: true });
+      });
+
+      refs.recentList.appendChild(pill);
+    });
+  }
+
+  function handleClearRecent() {
+    clearRecentNetworks();
+    renderRecentNetworks();
+    setMessage(refs.formFeedback, 'Recent networks cleared.', 'info');
+    window.setTimeout(() => {
+      if (refs.formFeedback.textContent === 'Recent networks cleared.') {
+        setMessage(refs.formFeedback, '');
+      }
+    }, 2200);
+  }
+
+  function updateRememberPasswordVisibility() {
+    if (!refs.rememberPasswordField) {
+      return;
+    }
+
+    const isOpenNetwork = normalizeSecurity(refs.security.value) === 'nopass';
+
+    refs.rememberPasswordField.hidden = isOpenNetwork;
+
+    if (isOpenNetwork && refs.rememberPassword) {
+      refs.rememberPassword.checked = false;
+    }
+  }
+
+  function updateContrastWarning() {
+    if (!refs.customizeFeedback) {
+      return;
+    }
+
+    const ratio = contrastRatio(qrPrefs.colorDark, qrPrefs.colorLight);
+
+    if (ratio < 3) {
+      refs.customizeFeedback.hidden = false;
+      refs.customizeFeedback.textContent = `Low contrast ratio (${ratio.toFixed(
+        2,
+      )}:1). Cameras may struggle to scan; aim for 3:1 or higher.`;
+      refs.customizeFeedback.dataset.state = 'error';
+    } else {
+      refs.customizeFeedback.hidden = true;
+      refs.customizeFeedback.textContent = '';
+      delete refs.customizeFeedback.dataset.state;
+    }
+  }
+
+  function applyQrPrefsToControls() {
+    if (refs.qrCorrectLevel) {
+      refs.qrCorrectLevel.value = qrPrefs.correctLevel;
+    }
+
+    if (refs.qrColorDark) {
+      refs.qrColorDark.value = qrPrefs.colorDark;
+    }
+
+    if (refs.qrColorLight) {
+      refs.qrColorLight.value = qrPrefs.colorLight;
+    }
+  }
+
+  function regenerateIfShown() {
+    if (currentResultState) {
+      renderResult({ persistRecent: false });
+    } else {
+      updateContrastWarning();
+    }
+  }
+
+  async function shareNetwork() {
+    if (!currentResultState || typeof navigator.share !== 'function') {
+      return;
+    }
+
+    const state = currentResultState;
+    const url = buildAppUrl(state, { includePassword: true });
+    const shareData = {
+      title: `Wi-Fi: ${state.ssid}`,
+      text: 'Tap to join the Wi-Fi network.',
+      url,
+    };
+
+    const canvas = getGeneratedCanvas();
+
+    if (canvas && typeof navigator.canShare === 'function') {
+      try {
+        const file = await canvasToPngFile(
+          canvas,
+          `${sanitizeFilename(state.ssid)}_WiFi_QR.png`,
+        );
+
+        if (file && navigator.canShare({ files: [file] })) {
+          shareData.files = [file];
+        }
+      } catch (error) {
+        console.error('Failed to attach QR file to share:', error);
+      }
+    }
+
+    try {
+      await navigator.share(shareData);
+      setMessage(refs.resultStatus, 'Shared.', 'success');
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        return;
+      }
+
+      if (shareData.files) {
+        try {
+          const fallback = { ...shareData };
+
+          delete fallback.files;
+          await navigator.share(fallback);
+          setMessage(refs.resultStatus, 'Shared.', 'success');
+          return;
+        } catch (fallbackError) {
+          if (fallbackError?.name === 'AbortError') {
+            return;
+          }
+
+          console.error('Share fallback failed:', fallbackError);
+        }
+      }
+
+      console.error('Share failed:', error);
+      setMessage(
+        refs.resultStatus,
+        'Unable to share from this browser.',
+        'error',
+      );
+    }
+  }
+
+  function renderResult({ scrollIntoView = false, persistRecent = true } = {}) {
     const state = getFormState();
     const validation = validateState(state);
 
@@ -439,6 +872,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return false;
     }
 
+    reinitQrCode();
     qrcode.makeCode(buildWifiString(state));
     updateResultCard(state);
     syncVisibleUrl(state);
@@ -449,6 +883,14 @@ document.addEventListener('DOMContentLoaded', () => {
     setMessage(refs.formFeedback, '');
     setMessage(refs.resultStatus, '');
     clearFieldInvalid();
+    updateContrastWarning();
+
+    if (persistRecent) {
+      saveRecentNetwork(state, {
+        rememberPassword: refs.rememberPassword?.checked,
+      });
+      renderRecentNetworks();
+    }
 
     return true;
   }
@@ -711,7 +1153,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (!currentResultState) {
-      renderResult();
+      renderResult({ persistRecent: false });
     }
 
     const copied = await copyText(buildAppUrl(state, { includePassword: true }));
@@ -765,7 +1207,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   const debouncedRenderResult = debounce(() => {
-    renderResult();
+    renderResult({ persistRecent: false });
     setMessage(refs.resultStatus, '');
   }, 150);
 
@@ -823,7 +1265,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (shouldAutogenerate) {
-      renderResult();
+      renderResult({ persistRecent: false });
     }
   }
 
@@ -840,6 +1282,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   updateThemeToggle();
+  applyQrPrefsToControls();
+  updateContrastWarning();
+  updateRememberPasswordVisibility();
+  renderRecentNetworks();
   applyUrlParams();
 
   refs.themeBtn.addEventListener('click', () => {
@@ -934,4 +1380,72 @@ document.addEventListener('DOMContentLoaded', () => {
       target.blur();
     }
   });
+
+  if (refs.shareNetwork && typeof navigator.share === 'function') {
+    refs.shareNetwork.hidden = false;
+    refs.shareNetwork.addEventListener('click', () => {
+      shareNetwork().catch(error => {
+        console.error('Share failed:', error);
+      });
+    });
+  }
+
+  if (refs.clearRecent) {
+    refs.clearRecent.addEventListener('click', handleClearRecent);
+  }
+
+  if (refs.qrCorrectLevel) {
+    refs.qrCorrectLevel.addEventListener('change', () => {
+      const next = refs.qrCorrectLevel.value;
+
+      if (!VALID_CORRECT_LEVELS.includes(next)) {
+        return;
+      }
+
+      qrPrefs = { ...qrPrefs, correctLevel: next };
+      saveQrPrefs(qrPrefs);
+      regenerateIfShown();
+    });
+  }
+
+  if (refs.qrColorDark) {
+    refs.qrColorDark.addEventListener('input', () => {
+      const next = refs.qrColorDark.value;
+
+      if (!HEX_COLOR_PATTERN.test(next)) {
+        return;
+      }
+
+      qrPrefs = { ...qrPrefs, colorDark: next };
+      saveQrPrefs(qrPrefs);
+      regenerateIfShown();
+    });
+  }
+
+  if (refs.qrColorLight) {
+    refs.qrColorLight.addEventListener('input', () => {
+      const next = refs.qrColorLight.value;
+
+      if (!HEX_COLOR_PATTERN.test(next)) {
+        return;
+      }
+
+      qrPrefs = { ...qrPrefs, colorLight: next };
+      saveQrPrefs(qrPrefs);
+      regenerateIfShown();
+    });
+  }
+
+  if (refs.qrColorsReset) {
+    refs.qrColorsReset.addEventListener('click', () => {
+      qrPrefs = {
+        ...qrPrefs,
+        colorDark: QR_DEFAULT_PREFS.colorDark,
+        colorLight: QR_DEFAULT_PREFS.colorLight,
+      };
+      saveQrPrefs(qrPrefs);
+      applyQrPrefsToControls();
+      regenerateIfShown();
+    });
+  }
 });

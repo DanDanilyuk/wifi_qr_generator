@@ -40,6 +40,14 @@
   </header>
 
   <main class="container">
+    <section id="recent-networks" class="recent-networks" hidden aria-label="Recent networks">
+      <div class="recent-networks-head">
+        <p class="recent-networks-label">Recent networks</p>
+        <button type="button" id="clear-recent" class="recent-clear">Clear</button>
+      </div>
+      <div id="recent-networks-list" class="recent-networks-list"></div>
+    </section>
+
     <form id="qr-form" class="card form-card" novalidate>
       <div class="input-group">
         <label for="ssid">Network Name</label>
@@ -100,6 +108,12 @@
           <input type="checkbox" id="hidden" name="hidden" />
           Hidden network
         </label>
+
+        <label class="checkbox-field" id="remember-password-field">
+          <input type="checkbox" id="remember-password" name="remember-password" />
+          Remember password
+          <span class="checkbox-hint" title="Stored only in this browser's localStorage.">(stored locally)</span>
+        </label>
       </div>
 
       <p id="security-help" class="form-hint">Open networks do not require a password.</p>
@@ -146,8 +160,39 @@
         <button type="button" id="copy-link" class="btn-secondary">Copy Setup Link</button>
         <button type="button" id="download-qr" class="btn-secondary">Download QR Code</button>
         <button type="button" id="generate-pdf" class="btn-secondary">Download PDF</button>
+        <button type="button" id="share-network" class="btn-secondary" hidden>Share</button>
       </div>
       <p id="result-status" class="feedback feedback-inline" role="status" aria-live="polite" hidden></p>
+
+      <details id="customize-qr" class="customize-qr">
+        <summary class="customize-qr-summary">
+          <span>Customize QR</span>
+          <span class="customize-qr-meta">Error correction and colors</span>
+        </summary>
+        <div class="customize-qr-body">
+          <div class="customize-row">
+            <label for="qr-correct-level" class="customize-label">Error correction</label>
+            <select id="qr-correct-level" class="customize-select">
+              <option value="L">Low (faster scan)</option>
+              <option value="M" selected>Medium</option>
+              <option value="Q">Quartile</option>
+              <option value="H">High (default)</option>
+            </select>
+          </div>
+          <div class="customize-row customize-row-colors">
+            <div class="customize-color-field">
+              <label for="qr-color-dark" class="customize-label">Foreground</label>
+              <input type="color" id="qr-color-dark" value="#000000" />
+            </div>
+            <div class="customize-color-field">
+              <label for="qr-color-light" class="customize-label">Background</label>
+              <input type="color" id="qr-color-light" value="#ffffff" />
+            </div>
+            <button type="button" id="qr-colors-reset" class="inline-action">Reset colors</button>
+          </div>
+          <p id="qr-customize-feedback" class="form-hint" hidden></p>
+        </div>
+      </details>
     </section>
 
     <div class="terminal-section">
