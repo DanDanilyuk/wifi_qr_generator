@@ -2,7 +2,12 @@ const THEME_KEY = 'theme';
 const THEME_ATTRIBUTE = 'data-theme';
 const SECURITY_CONFIG = {
   WPA: {
-    label: 'WPA / WPA2 / WPA3',
+    label: 'WPA / WPA2',
+    qrValue: 'WPA',
+    requiresPassword: true,
+  },
+  WPA3: {
+    label: 'WPA3',
     qrValue: 'WPA',
     requiresPassword: true,
   },
@@ -17,6 +22,41 @@ const SECURITY_CONFIG = {
     requiresPassword: false,
   },
 };
+
+const JSPDF_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+const JSPDF_INTEGRITY = 'sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk';
+
+let jspdfPromise = null;
+
+function loadJsPdf() {
+  if (!jspdfPromise) {
+    jspdfPromise = new Promise((resolve, reject) => {
+      if (window.jspdf?.jsPDF) {
+        resolve(window.jspdf);
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = JSPDF_SRC;
+      script.integrity = JSPDF_INTEGRITY;
+      script.crossOrigin = 'anonymous';
+      script.onload = () => {
+        if (window.jspdf?.jsPDF) {
+          resolve(window.jspdf);
+        } else {
+          reject(new Error('jsPDF loaded but window.jspdf is unavailable.'));
+        }
+      };
+      script.onerror = () => {
+        jspdfPromise = null;
+        reject(new Error('Failed to load jsPDF from the CDN.'));
+      };
+      document.head.appendChild(script);
+    });
+  }
+
+  return jspdfPromise;
+}
 
 const savedTheme = localStorage.getItem(THEME_KEY);
 const systemPrefersDark = window.matchMedia(
@@ -42,6 +82,10 @@ function normalizeSecurity(rawValue = '') {
 
   if (value.includes('wep')) {
     return 'WEP';
+  }
+
+  if (value.includes('wpa3') || value.includes('sae')) {
+    return 'WPA3';
   }
 
   if (value.includes('wpa')) {
@@ -384,12 +428,6 @@ document.addEventListener('DOMContentLoaded', () => {
     return refs.qrcodeContainer.querySelector('canvas');
   }
 
-  function truncate(value, maxLength) {
-    return value.length > maxLength
-      ? `${value.slice(0, maxLength - 1)}\u2026`
-      : value;
-  }
-
   function downloadQrPng() {
     if (!currentResultState) {
       return;
@@ -409,7 +447,32 @@ document.addEventListener('DOMContentLoaded', () => {
     link.click();
   }
 
-  function downloadPdfCard() {
+  function setPdfButtonLoading(isLoading) {
+    const button = refs.generatePdf;
+
+    if (isLoading) {
+      if (!button.dataset.originalLabel) {
+        button.dataset.originalLabel = button.textContent;
+      }
+
+      button.classList.add('loading');
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+      button.textContent = 'Generating...';
+      return;
+    }
+
+    button.classList.remove('loading');
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
+
+    if (button.dataset.originalLabel) {
+      button.textContent = button.dataset.originalLabel;
+      delete button.dataset.originalLabel;
+    }
+  }
+
+  async function downloadPdfCard() {
     if (!currentResultState) {
       return;
     }
@@ -420,84 +483,190 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4',
-    });
+    setPdfButtonLoading(true);
 
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const cardX = 18;
-    const cardY = 18;
-    const cardWidth = pageWidth - 36;
-    const cardHeight = 220;
-    const leftX = cardX + 12;
-    const rightX = cardX + cardWidth - 12;
-    const qrSize = 88;
-    const qrX = (pageWidth - qrSize) / 2;
-    const qrY = 54;
-    const details = [
-      ['NETWORK', currentResultState.ssid],
-      [
-        'PASSWORD',
-        normalizeSecurity(currentResultState.security) === 'nopass'
-          ? 'Open network'
-          : currentResultState.password,
-      ],
-      ['SECURITY', getSecurityMeta(currentResultState.security).label],
-      ['HIDDEN', currentResultState.hidden ? 'Yes' : 'No'],
-    ];
+    let jspdfModule;
 
-    pdf.setFillColor(253, 252, 249);
-    pdf.roundedRect(cardX, cardY, cardWidth, cardHeight, 8, 8, 'F');
-    pdf.setDrawColor(226, 221, 212);
-    pdf.setLineWidth(0.5);
-    pdf.roundedRect(cardX, cardY, cardWidth, cardHeight, 8, 8);
+    try {
+      jspdfModule = await loadJsPdf();
+    } catch (error) {
+      console.error('Failed to load jsPDF:', error);
+      setMessage(refs.resultStatus, 'PDF generation failed.', 'error');
+      setPdfButtonLoading(false);
+      return;
+    }
 
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(24);
-    pdf.setTextColor(26, 23, 21);
-    pdf.text('Wi-Fi access', pageWidth / 2, 34, { align: 'center' });
+    try {
+      const { jsPDF } = jspdfModule;
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
 
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(11);
-    pdf.setTextColor(140, 133, 124);
-    pdf.text('Scan the QR code or enter the details below.', pageWidth / 2, 42, {
-      align: 'center',
-    });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const cardX = 18;
+      const cardY = 18;
+      const cardWidth = pageWidth - 36;
+      const leftPadding = 12;
+      const leftX = cardX + leftPadding;
+      const rightX = cardX + cardWidth - leftPadding;
+      const qrSize = 88;
+      const qrX = (pageWidth - qrSize) / 2;
+      const qrY = 54;
 
-    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', qrX, qrY, qrSize, qrSize);
+      const isOpenNetwork =
+        normalizeSecurity(currentResultState.security) === 'nopass';
+      const passwordValue = isOpenNetwork
+        ? 'Open network'
+        : currentResultState.password;
 
-    pdf.setFontSize(8);
-    pdf.setTextColor(160, 160, 160);
-    pdf.text('Point your phone camera at the code to connect.', pageWidth / 2, 149, {
-      align: 'center',
-    });
+      const details = [
+        ['NETWORK', currentResultState.ssid],
+        ['PASSWORD', passwordValue],
+        ['SECURITY', getSecurityMeta(currentResultState.security).label],
+        ['HIDDEN', currentResultState.hidden ? 'Yes' : 'No'],
+      ];
 
-    const rowStartY = 166;
-
-    details.forEach(([label, value], index) => {
-      const rowY = rowStartY + index * 16;
-
-      if (index > 0) {
-        pdf.setDrawColor(235, 235, 235);
-        pdf.setLineWidth(0.3);
-        pdf.line(leftX, rowY - 8, rightX, rowY - 8);
-      }
-
-      pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(8);
-      pdf.setTextColor(150, 150, 150);
-      pdf.text(label, leftX, rowY);
+      const rowStartY = 166;
+      const labelGap = 24;
+      const valueLineHeight = 5.2;
+      const rowGap = 6;
+      const maxValueWidth = cardWidth - 2 * leftPadding - labelGap;
+      const maxPasswordLines = 3;
 
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(12);
-      pdf.setTextColor(20, 20, 20);
-      pdf.text(truncate(value, 42), rightX, rowY, { align: 'right' });
-    });
 
-    pdf.save(`${sanitizeFilename(currentResultState.ssid)}_WiFi_QR.pdf`);
+      let passwordFontSize = 12;
+
+      if (!isOpenNetwork) {
+        const measure = size => {
+          pdf.setFontSize(size);
+          return pdf.splitTextToSize(passwordValue, maxValueWidth);
+        };
+
+        let wrapped = measure(passwordFontSize);
+
+        if (wrapped.length > maxPasswordLines) {
+          passwordFontSize = 10;
+          wrapped = measure(passwordFontSize);
+        }
+
+        if (wrapped.length > maxPasswordLines) {
+          passwordFontSize = 9;
+          wrapped = measure(passwordFontSize);
+        }
+
+        if (wrapped.length > maxPasswordLines) {
+          const kept = wrapped.slice(0, maxPasswordLines);
+          const lastIndex = kept.length - 1;
+          const lastLine = kept[lastIndex] || '';
+          const truncatedLast = `${lastLine.replace(/\s+$/, '').slice(0, -1)}…`;
+          kept[lastIndex] = truncatedLast;
+          wrapped = kept;
+        }
+
+        details[1] = ['PASSWORD', wrapped, passwordFontSize];
+      }
+
+      const rowSpecs = details.map(entry => {
+        const [, rawValue, sizeOverride] = entry;
+        let lines;
+        let fontSize;
+
+        if (Array.isArray(rawValue)) {
+          lines = rawValue;
+          fontSize = sizeOverride || 12;
+        } else {
+          fontSize = sizeOverride || 12;
+          pdf.setFontSize(fontSize);
+          lines = pdf.splitTextToSize(String(rawValue), maxValueWidth);
+        }
+
+        const valueHeight = Math.max(
+          valueLineHeight,
+          lines.length * valueLineHeight,
+        );
+
+        return { lines, fontSize, valueHeight };
+      });
+
+      const rowHeights = rowSpecs.map(spec =>
+        Math.max(valueLineHeight, spec.valueHeight) + rowGap,
+      );
+      const detailsBlockHeight = rowHeights.reduce((sum, h) => sum + h, 0);
+      const cardHeight = Math.max(220, rowStartY - cardY + detailsBlockHeight + 6);
+
+      pdf.setFillColor(253, 252, 249);
+      pdf.roundedRect(cardX, cardY, cardWidth, cardHeight, 8, 8, 'F');
+      pdf.setDrawColor(226, 221, 212);
+      pdf.setLineWidth(0.5);
+      pdf.roundedRect(cardX, cardY, cardWidth, cardHeight, 8, 8);
+
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(24);
+      pdf.setTextColor(26, 23, 21);
+      pdf.text('Wi-Fi access', pageWidth / 2, 34, { align: 'center' });
+
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(11);
+      pdf.setTextColor(140, 133, 124);
+      pdf.text(
+        'Scan the QR code or enter the details below.',
+        pageWidth / 2,
+        42,
+        { align: 'center' },
+      );
+
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', qrX, qrY, qrSize, qrSize);
+
+      pdf.setFontSize(8);
+      pdf.setTextColor(160, 160, 160);
+      pdf.text(
+        'Point your phone camera at the code to connect.',
+        pageWidth / 2,
+        149,
+        { align: 'center' },
+      );
+
+      let cursorY = rowStartY;
+
+      details.forEach(([label], index) => {
+        const spec = rowSpecs[index];
+        const rowTop = cursorY;
+
+        if (index > 0) {
+          pdf.setDrawColor(235, 235, 235);
+          pdf.setLineWidth(0.3);
+          pdf.line(leftX, rowTop - 4, rightX, rowTop - 4);
+        }
+
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8);
+        pdf.setTextColor(150, 150, 150);
+        pdf.text(label, leftX, rowTop);
+
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(spec.fontSize);
+        pdf.setTextColor(20, 20, 20);
+
+        spec.lines.forEach((line, lineIndex) => {
+          pdf.text(line, rightX, rowTop + lineIndex * valueLineHeight, {
+            align: 'right',
+          });
+        });
+
+        cursorY = rowTop + rowHeights[index];
+      });
+
+      pdf.save(`${sanitizeFilename(currentResultState.ssid)}_WiFi_QR.pdf`);
+    } catch (error) {
+      console.error('Failed to generate PDF:', error);
+      setMessage(refs.resultStatus, 'PDF generation failed.', 'error');
+    } finally {
+      setPdfButtonLoading(false);
+    }
   }
 
   async function copySetupLink() {
