@@ -1,0 +1,45 @@
+#compdef wifi_gen.sh
+# Zsh completion for wifi_gen.sh
+#
+# Install:
+#   Place this file (named exactly `_wifi_gen`) in a directory listed in $fpath,
+#   for example ~/.zsh/completions/, then ensure compinit is initialized:
+#       fpath=(~/.zsh/completions $fpath)
+#       autoload -Uz compinit && compinit
+
+_wifi_gen() {
+  _arguments -s -S \
+    '--ssid[Wi-Fi SSID]:ssid' \
+    '(--password --pass)'{--password,--pass}'[Wi-Fi password (use - to read from stdin/tty)]:password' \
+    '--security[Security type]:security:_wifi_gen_security' \
+    '--hidden[Whether the SSID is hidden]:hidden:_wifi_gen_hidden' \
+    '--print[Print URL instead of opening browser]' \
+    '--qr[Render terminal QR via qrencode]' \
+    '--copy[Copy URL/payload to clipboard]' \
+    '--list-networks[List saved Wi-Fi profile names and exit]' \
+    '--version[Print version and exit]' \
+    '(-h --help)'{-h,--help}'[Show help and exit]'
+}
+
+_wifi_gen_security() {
+  local -a security_values
+  security_values=(
+    'WPA:WPA personal'
+    'WPA2:WPA2 personal'
+    'WPA3:WPA3 (SAE)'
+    'WEP:Wired Equivalent Privacy (deprecated)'
+    'nopass:Open network, no password'
+  )
+  _describe -t security 'security type' security_values
+}
+
+_wifi_gen_hidden() {
+  local -a hidden_values
+  hidden_values=(
+    'true:Hidden SSID'
+    'false:Broadcast SSID'
+  )
+  _describe -t hidden 'hidden flag' hidden_values
+}
+
+_wifi_gen "$@"
