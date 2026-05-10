@@ -65,10 +65,20 @@ function sanitizeFilename(value) {
 }
 
 function detectOs() {
+  const ua = window.navigator.userAgent || '';
+  const rawPlatform =
+    window.navigator.userAgentData?.platform || window.navigator.platform || '';
   const platform =
     `${window.navigator.userAgentData?.platform || ''} ${
       window.navigator.platform || ''
-    } ${window.navigator.userAgent || ''}`.toLowerCase();
+    } ${ua}`.toLowerCase();
+
+  if (
+    /iPad|iPhone|iPod/i.test(ua) ||
+    (window.navigator.maxTouchPoints > 1 && /Mac/i.test(rawPlatform))
+  ) {
+    return 'ios';
+  }
 
   if (platform.includes('win')) {
     return 'windows';
@@ -91,6 +101,8 @@ function buildCommandForCurrentOs() {
       return 'powershell -Command "& {Invoke-WebRequest -Uri \'https://dandanilyuk.github.io/wifi_qr_generator/wifi_gen.sh\' -OutFile \\"$env:TEMP\\wifi_gen.sh\\"; bash \\"$env:TEMP\\wifi_gen.sh\\"}"';
     case 'linux':
       return 'bash <(curl -fsSL https://dandanilyuk.github.io/wifi_qr_generator/wifi_gen.sh)';
+    case 'ios':
+      return '';
     case 'mac':
     default:
       return '/bin/bash -c "$(curl -fsSL https://dandanilyuk.github.io/wifi_qr_generator/wifi_gen.sh)"';
@@ -121,22 +133,26 @@ function buildWifiString(state) {
 function buildAppUrl(state, { includePassword } = { includePassword: false }) {
   const nextUrl = new URL(window.location.href);
   nextUrl.search = '';
+  nextUrl.hash = '';
 
   if (!state.ssid) {
     return nextUrl.toString();
   }
 
-  nextUrl.searchParams.set('ssid', state.ssid);
-  nextUrl.searchParams.set('security', normalizeSecurity(state.security));
-  nextUrl.searchParams.set('hidden', String(state.hidden));
+  const params = new URLSearchParams();
+  params.set('ssid', state.ssid);
+  params.set('security', normalizeSecurity(state.security));
+  params.set('hidden', String(state.hidden));
 
   if (
     includePassword &&
     normalizeSecurity(state.security) !== 'nopass' &&
     state.password
   ) {
-    nextUrl.searchParams.set('password', state.password);
+    params.set('password', state.password);
   }
+
+  nextUrl.hash = params.toString();
 
   return nextUrl.toString();
 }
@@ -281,6 +297,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const nextUrl = new URL(buildAppUrl(state, { includePassword: false }));
     const nextPath = `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`;
     window.history.replaceState({}, '', nextPath || nextUrl.pathname);
+  }
+
+  function readUrlParams() {
+    const fragment = window.location.hash.slice(1);
+
+    if (fragment) {
+      return new URLSearchParams(fragment);
+    }
+
+    return new URLSearchParams(window.location.search);
   }
 
   function updatePasswordFieldState() {
@@ -557,7 +583,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function applyUrlParams() {
-    const urlParams = new URLSearchParams(window.location.search);
+    const urlParams = readUrlParams();
 
     if (urlParams.has('ssid')) {
       refs.ssid.value = urlParams.get('ssid') || '';
@@ -596,7 +622,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  refs.command.innerText = buildCommandForCurrentOs();
+  const osCommand = buildCommandForCurrentOs();
+
+  if (osCommand) {
+    refs.command.innerText = osCommand;
+  } else {
+    const terminalSection = document.querySelector('.terminal-section');
+
+    if (terminalSection) {
+      terminalSection.hidden = true;
+    }
+  }
+
   updateThemeToggle();
   applyUrlParams();
 
