@@ -1,279 +1,290 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data: blob:; base-uri 'self'; form-action 'none'"
+    />
+    <meta
+      name="description"
+      content="Generate a QR code for your Wi-Fi network. Guests scan it to connect instantly - no typing passwords."
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#b84c12" />
+    <title>Wi-Fi QR Generator</title>
+    <link rel="icon" href="icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="icons/icon-192.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <script src="theme.js"></script>
+    <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="main.js"></script>
+  </head>
 
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self';">
-  <meta name="description" content="Generate a QR code for your Wi-Fi network. Guests scan it to connect instantly - no typing passwords." />
-  <title>Wi-Fi QR Generator</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📶</text></svg>" />
-  <link rel="manifest" href="manifest.webmanifest" />
-  <meta name="theme-color" content="#b84c12" />
-  <link rel="apple-touch-icon" href="icons/icon-192.png" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU" crossorigin="anonymous"></script>
-  <script defer src="main.js"></script>
-</head>
-
-<body>
-  <header class="header-bar">
-    <div class="title-group">
-      <h1>Wi-Fi QR Generator</h1>
-      <p class="tagline">Scan to connect. No typing.</p>
-    </div>
-    <button id="theme-toggle" class="theme-toggle" aria-label="Toggle Dark Mode">
-      <svg id="moon-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-        aria-hidden="true" focusable="false">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-          d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-      </svg>
-      <svg id="sun-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-        style="display: none;" aria-hidden="true" focusable="false">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-          d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-      </svg>
-    </button>
-  </header>
-
-  <main class="container">
-    <section id="recent-networks" class="recent-networks" hidden aria-label="Recent networks">
-      <div class="recent-networks-head">
-        <p class="recent-networks-label">Recent networks</p>
-        <button type="button" id="clear-recent" class="recent-clear">Clear</button>
+  <body>
+    <header class="site-header">
+      <div>
+        <h1>Wi-Fi QR Generator</h1>
+        <p class="tagline">Scan to connect. No typing.</p>
       </div>
-      <div id="recent-networks-list" class="recent-networks-list"></div>
-    </section>
+      <button
+        type="button"
+        id="theme-toggle"
+        class="theme-toggle"
+        aria-label="Dark theme"
+        aria-pressed="false"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 3a9 9 0 0 0 0 18z" />
+        </svg>
+      </button>
+    </header>
 
-    <form id="qr-form" class="card form-card" novalidate>
-      <div class="input-group">
-        <label for="ssid">Network Name</label>
-        <input
-          type="text"
-          id="ssid"
-          name="ssid"
-          placeholder="e.g. My Home WiFi"
-          autocomplete="off"
-          autocapitalize="none"
-          spellcheck="false"
-          required
-        />
-      </div>
+    <main>
+      <noscript>
+        <p class="card">
+          This page needs JavaScript to draw the QR code. Everything runs in your browser and
+          nothing is sent anywhere.
+        </p>
+      </noscript>
 
-      <div class="input-group">
-        <label for="password">Password</label>
-        <div class="password-wrapper">
+      <section id="recent" class="recent" aria-labelledby="recent-heading" hidden>
+        <h2 id="recent-heading" class="label">Recent networks</h2>
+        <button type="button" id="clear-recent" class="link-button">Clear</button>
+        <ul id="recent-list" role="list"></ul>
+      </section>
+
+      <form id="qr-form" class="card" novalidate>
+        <div class="field">
+          <label for="ssid">Network name</label>
           <input
-            type="password"
-            id="password"
-            name="password"
-            placeholder="Enter password"
-            autocomplete="current-password"
+            type="text"
+            id="ssid"
+            name="ssid"
+            placeholder="e.g. My Home WiFi"
+            autocomplete="off"
             autocapitalize="none"
+            autocorrect="off"
             spellcheck="false"
+            required
           />
-          <button type="button" id="toggle-password" class="password-toggle" aria-label="Show password" aria-pressed="false">
-            <svg id="eye-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-              stroke="currentColor" aria-hidden="true" focusable="false">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-            </svg>
-            <svg id="eye-off-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-              stroke="currentColor" style="display: none;" aria-hidden="true" focusable="false">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-            </svg>
-          </button>
-        </div>
-        <p id="password-help" class="form-hint">Protected networks need a password to scan and join.</p>
-      </div>
-
-      <div class="form-row">
-        <div class="input-group">
-          <label for="security">Security</label>
-          <select id="security" name="security">
-            <option value="WPA">WPA / WPA2</option>
-            <option value="WPA3">WPA3</option>
-            <option value="WEP">WEP</option>
-            <option value="nopass">Open network</option>
-          </select>
         </div>
 
-        <label class="checkbox-field">
-          <input type="checkbox" id="hidden" name="hidden" />
-          Hidden network
-        </label>
-
-        <label class="checkbox-field" id="remember-password-field">
-          <input type="checkbox" id="remember-password" name="remember-password" />
-          Remember password
-          <span class="checkbox-hint" title="Stored only in this browser's localStorage.">(stored locally)</span>
-        </label>
-      </div>
-
-      <p id="security-help" class="form-hint">Open networks do not require a password.</p>
-      <p id="enterprise-help" class="form-hint">Enterprise / 802.1X networks aren't supported by Wi-Fi QR codes. The device receiving the scan must be configured manually.</p>
-      <div id="form-feedback" class="feedback" role="status" aria-live="polite" hidden></div>
-      <button type="submit" id="generate" class="btn-generate">Generate QR Code</button>
-      <div class="form-import">
-        <button type="button" id="import-qr" class="btn-tertiary">Import QR from image</button>
-        <input
-          type="file"
-          id="import-qr-file"
-          accept="image/*"
-          capture="environment"
-          hidden
-        />
-        <p id="import-status" class="feedback feedback-inline" role="status" aria-live="polite" hidden></p>
-      </div>
-    </form>
-
-    <section class="card result-card" hidden>
-      <div class="result-header">
-        <div>
-          <p class="section-kicker">Ready to share</p>
-          <h2>Scan to connect</h2>
-        </div>
-        <p class="scan-hint">Point your camera at the QR code to join instantly.</p>
-      </div>
-      <div class="result-grid">
-        <div class="qr-frame">
-          <div id="qrcode"></div>
-        </div>
-        <div class="network-details" aria-label="Generated network details">
-          <div class="detail-row">
-            <span>Network</span>
-            <strong id="result-ssid">-</strong>
+        <div class="field">
+          <label for="password">Password</label>
+          <div class="password-row">
+            <input
+              type="password"
+              id="password"
+              name="password"
+              placeholder="Enter password"
+              autocomplete="off"
+              autocapitalize="none"
+              autocorrect="off"
+              spellcheck="false"
+              aria-describedby="password-help"
+            />
+            <button
+              type="button"
+              id="toggle-password"
+              class="link-button"
+              aria-label="Show password"
+            >
+              Show
+            </button>
           </div>
-          <div class="detail-row">
-            <span>Security</span>
-            <strong id="result-security">-</strong>
+          <p id="password-help" class="hint">
+            Protected networks need a password to scan and join.
+          </p>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="security">Security</label>
+            <select id="security" name="security" aria-describedby="security-help">
+              <option value="WPA">WPA / WPA2</option>
+              <option value="WPA3">WPA3</option>
+              <option value="WEP">WEP</option>
+              <option value="nopass">Open network</option>
+            </select>
           </div>
-          <div class="detail-row" id="result-hidden-row">
-            <span>Hidden</span>
-            <strong id="result-hidden">-</strong>
+          <label class="check">
+            <input type="checkbox" id="hidden" name="hidden" />
+            Hidden network
+          </label>
+          <label class="check" id="remember-field">
+            <input type="checkbox" id="remember-password" />
+            Remember password in this browser
+          </label>
+        </div>
+
+        <p id="security-help" class="hint">Choose the same security mode your router uses.</p>
+        <p class="hint">
+          Enterprise (802.1X) networks aren't supported by Wi-Fi QR codes. Those devices have to be
+          set up by hand.
+        </p>
+
+        <p id="form-feedback" class="feedback" role="status" hidden></p>
+        <button type="submit" class="button-primary">Generate QR code</button>
+
+        <button type="button" id="import-qr" class="button-dashed">Import QR from image</button>
+        <input type="file" id="import-file" accept="image/*" hidden />
+        <p id="import-status" class="feedback" role="status" hidden></p>
+      </form>
+
+      <section id="result" class="card result" aria-labelledby="result-heading" hidden>
+        <header class="result-header">
+          <div>
+            <p class="kicker">Ready to share</p>
+            <h2 id="result-heading">Scan to connect</h2>
           </div>
-          <div class="detail-row detail-row-password">
-            <span>Password</span>
-            <div class="detail-value-with-action">
-              <strong id="result-password">-</strong>
-              <button type="button" id="copy-password" class="inline-action">Copy</button>
+          <p class="hint">Point your camera at the QR code to join instantly.</p>
+        </header>
+
+        <div class="result-body">
+          <canvas id="qr" class="qr" role="img" aria-label="Wi-Fi QR code"></canvas>
+          <dl class="details">
+            <div>
+              <dt>Network</dt>
+              <dd id="result-ssid"></dd>
             </div>
-          </div>
+            <div>
+              <dt>Security</dt>
+              <dd id="result-security"></dd>
+            </div>
+            <div id="result-hidden-row">
+              <dt>Hidden</dt>
+              <dd>Yes</dd>
+            </div>
+            <div>
+              <dt>Password</dt>
+              <dd>
+                <span id="result-password"></span>
+                <button type="button" id="copy-password" class="link-button">Copy</button>
+              </dd>
+            </div>
+          </dl>
         </div>
-      </div>
-      <div class="result-actions">
-        <button type="button" id="copy-link" class="btn-secondary">Copy Setup Link</button>
-        <button type="button" id="copy-scan-link" class="btn-secondary">Copy Scan-only Link</button>
-        <button type="button" id="download-qr" class="btn-secondary">Download QR Code</button>
-        <button type="button" id="generate-pdf" class="btn-secondary">Download PDF</button>
-        <button type="button" id="share-network" class="btn-secondary" hidden>Share</button>
-      </div>
-      <details class="pdf-customize">
-        <summary>Customize PDF</summary>
-        <div class="pdf-customize-body">
-          <div class="input-group">
+
+        <div class="actions">
+          <button type="button" id="copy-link">Copy setup link</button>
+          <button type="button" id="copy-scan-link">Copy scan-only link</button>
+          <button type="button" id="download-qr">Download QR code</button>
+          <button type="button" id="download-pdf">Download PDF</button>
+          <button type="button" id="share" hidden>Share</button>
+        </div>
+        <p id="result-status" class="feedback" role="status" hidden></p>
+
+        <details>
+          <summary>Customize QR</summary>
+          <div class="field-row">
+            <div class="field">
+              <label for="qr-level">Error correction</label>
+              <select id="qr-level">
+                <option value="L">Low (faster scan)</option>
+                <option value="M" selected>Medium (default)</option>
+                <option value="Q">Quartile</option>
+                <option value="H">High</option>
+              </select>
+            </div>
+            <div class="field field-color">
+              <label for="qr-dark">Foreground</label>
+              <input type="color" id="qr-dark" value="#000000" />
+            </div>
+            <div class="field field-color">
+              <label for="qr-light">Background</label>
+              <input type="color" id="qr-light" value="#ffffff" />
+            </div>
+            <button type="button" id="qr-reset" class="link-button">Reset colors</button>
+          </div>
+          <p id="qr-warning" class="feedback" role="status" hidden></p>
+        </details>
+
+        <details>
+          <summary>Customize PDF</summary>
+          <div class="field">
             <label for="pdf-title">Title</label>
             <input
               type="text"
               id="pdf-title"
-              name="pdf-title"
               placeholder="Wi-Fi access"
               autocomplete="off"
               spellcheck="false"
             />
           </div>
-          <div class="input-group">
+          <div class="field">
             <label for="pdf-subtitle">Subtitle</label>
             <input
               type="text"
               id="pdf-subtitle"
-              name="pdf-subtitle"
               placeholder="Scan the QR code or enter the details below."
               autocomplete="off"
               spellcheck="false"
             />
           </div>
-          <div class="input-group">
+          <div class="field">
             <label for="pdf-logo">Logo</label>
-            <div class="pdf-logo-controls">
-              <input
-                type="file"
-                id="pdf-logo"
-                name="pdf-logo"
-                accept="image/png,image/jpeg,image/svg+xml"
-              />
-              <button type="button" id="pdf-logo-clear" class="btn-tertiary" hidden>Remove logo</button>
-            </div>
-            <p id="pdf-logo-status" class="form-hint">PNG, JPEG, or SVG. Resized to about 40mm wide.</p>
+            <input
+              type="file"
+              id="pdf-logo"
+              accept="image/png,image/jpeg,image/svg+xml"
+              aria-describedby="pdf-logo-status"
+            />
+            <p id="pdf-logo-status" class="hint">PNG, JPEG, or SVG. Resized to about 40mm wide.</p>
+            <button type="button" id="pdf-logo-clear" class="link-button" hidden>
+              Remove logo
+            </button>
           </div>
+        </details>
+      </section>
+
+      <section id="terminal" class="terminal" aria-labelledby="terminal-heading">
+        <h2 id="terminal-heading" class="label">Auto-fill from terminal</h2>
+        <p class="hint">
+          Pull your current Wi-Fi details and open the app with everything prefilled.
+        </p>
+
+        <fieldset class="os-picker">
+          <legend>Your system</legend>
+          <label><input type="radio" name="os" value="mac" checked /> macOS</label>
+          <label><input type="radio" name="os" value="windows" /> Windows</label>
+          <label><input type="radio" name="os" value="linux" /> Linux</label>
+        </fieldset>
+
+        <div class="terminal-window">
+          <pre
+            data-os="mac"
+          ><code>/bin/bash -c "$(curl -fsSL https://dandanilyuk.github.io/wifi_qr_generator/wifi_gen.sh)"</code></pre>
+          <pre
+            data-os="windows"
+            hidden
+          ><code>powershell -Command "&amp; {Invoke-WebRequest -Uri 'https://dandanilyuk.github.io/wifi_qr_generator/wifi_gen.sh' -OutFile \"$env:TEMP\wifi_gen.sh\"; bash \"$env:TEMP\wifi_gen.sh\"}"</code></pre>
+          <pre
+            data-os="linux"
+            hidden
+          ><code>bash &lt;(curl -fsSL https://dandanilyuk.github.io/wifi_qr_generator/wifi_gen.sh)</code></pre>
+          <button type="button" id="copy-command" class="link-button">Copy</button>
         </div>
-      </details>
-      <p id="result-status" class="feedback feedback-inline" role="status" aria-live="polite" hidden></p>
 
-      <details id="customize-qr" class="customize-qr">
-        <summary class="customize-qr-summary">
-          <span>Customize QR</span>
-          <span class="customize-qr-meta">Error correction and colors</span>
-        </summary>
-        <div class="customize-qr-body">
-          <div class="customize-row">
-            <label for="qr-correct-level" class="customize-label">Error correction</label>
-            <select id="qr-correct-level" class="customize-select">
-              <option value="L">Low (faster scan)</option>
-              <option value="M" selected>Medium</option>
-              <option value="Q">Quartile</option>
-              <option value="H">High (default)</option>
-            </select>
-          </div>
-          <div class="customize-row customize-row-colors">
-            <div class="customize-color-field">
-              <label for="qr-color-dark" class="customize-label">Foreground</label>
-              <input type="color" id="qr-color-dark" value="#000000" />
-            </div>
-            <div class="customize-color-field">
-              <label for="qr-color-light" class="customize-label">Background</label>
-              <input type="color" id="qr-color-light" value="#ffffff" />
-            </div>
-            <button type="button" id="qr-colors-reset" class="inline-action">Reset colors</button>
-          </div>
-          <p id="qr-customize-feedback" class="form-hint" hidden></p>
-        </div>
-      </details>
-    </section>
+        <p class="hint" data-os="mac">
+          Paste into Terminal. macOS asks once to let it read the password from your Keychain.
+        </p>
+        <p class="hint" data-os="windows" hidden>
+          Paste into PowerShell. The helper is a bash script, so it needs Git Bash or WSL installed.
+        </p>
+        <p class="hint" data-os="linux" hidden>
+          Paste into a terminal. Reads the network from NetworkManager (nmcli).
+        </p>
+      </section>
+    </main>
 
-    <div class="terminal-section">
-      <p class="terminal-label">Auto-fill from terminal</p>
-      <p class="terminal-copy">Pull your current Wi-Fi details and open the app with everything prefilled.</p>
-      <div class="terminal-window">
-        <div class="terminal-chrome">
-          <span class="terminal-dot dot-red"></span>
-          <span class="terminal-dot dot-yellow"></span>
-          <span class="terminal-dot dot-green"></span>
-        </div>
-        <div class="terminal-body">
-          <code id="command"></code>
-          <button id="copy-command" class="copy-btn" aria-label="Copy command">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-              aria-hidden="true" focusable="false">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-          </button>
-        </div>
-      </div>
-    </div>
-  </main>
-
-  <footer>
-    <p>Made by <a href="https://www.dandanilyuk.com" target="_blank" rel="noreferrer">Dan Danilyuk</a></p>
-  </footer>
-
-</body>
-
+    <footer>
+      <p>
+        Made by
+        <a href="https://www.dandanilyuk.com" target="_blank" rel="noreferrer">Dan Danilyuk</a>
+      </p>
+    </footer>
+  </body>
 </html>

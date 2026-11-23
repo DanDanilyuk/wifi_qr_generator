@@ -1,47 +1,84 @@
-const CACHE_VERSION = 'v1';
-const CACHE_NAME = 'wifi-qr-' + CACHE_VERSION;
+// Offline support. Bump the version only to force every file to be refetched;
+// ordinary deploys are picked up automatically (see the fetch handler).
+const CACHE = 'wifi-qr-v2';
 const ASSETS = [
   './',
-  './index.html',
-  './styles.css',
-  './main.js',
-  './manifest.webmanifest',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  // Note: don't precache cross-origin CDN scripts in v1; we rely on browser cache for those
+  'index.html',
+  'scan.html',
+  'styles.css',
+  'theme.js',
+  'wifi.js',
+  'main.js',
+  'scan.js',
+  'manifest.webmanifest',
+  'icons/icon-192.png',
+  'icons/icon-512.png',
+  'vendor/qrcode-generator.js',
+  'vendor/jsQR.js',
+  'vendor/jspdf.umd.min.js',
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
+    caches
+      .open(CACHE)
+      // 'reload' skips the browser's HTTP cache so the copies are current.
+      .then((cache) =>
+        cache.addAll(ASSETS.map((url) => new Request(url, { cache: 'reload' })))
+      )
+      .then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys.filter((k) => k.startsWith('wifi-qr-') && k !== CACHE_NAME).map((k) => caches.delete(k))
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((key) => key.startsWith('wifi-qr-') && key !== CACHE)
+            .map((key) => caches.delete(key))
+        )
       )
-    )
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
+// Stale-while-revalidate: answer from the cache straight away and refresh the
+// cached copy in the background. The site opens instantly and offline, and a
+// new deploy shows up on the visit after it lands.
 self.addEventListener('fetch', (event) => {
-  // Only handle same-origin GETs
-  const url = new URL(event.request.url);
-  if (event.request.method !== 'GET' || url.origin !== location.origin) return;
+  const { request } = event;
+  const url = new URL(request.url);
+
+  if (request.method !== 'GET' || url.origin !== self.location.origin) {
+    return;
+  }
+
+  // Cache by path only. Older setup links carry the Wi-Fi password in the
+  // query string, and that must never end up stored as a cache key.
+  url.search = '';
+  url.hash = '';
 
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request).then((res) => {
-      // Optionally cache new same-origin successful responses
-      if (res.ok) {
-        const copy = res.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+    caches.open(CACHE).then(async (cache) => {
+      const cached = await cache.match(url.href);
+      const fresh = fetch(request).then((response) => {
+        if (response.ok) {
+          cache.put(url.href, response.clone());
+        }
+
+        return response;
+      });
+
+      if (!cached) {
+        return fresh;
       }
-      return res;
-    }).catch(() => caches.match('./index.html')))
+
+      event.waitUntil(fresh.catch(() => {}));
+
+      return cached;
+    })
   );
 });
