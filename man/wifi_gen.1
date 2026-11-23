@@ -52,6 +52,13 @@ be redacted by default; the script will prompt for
 to temporarily run
 .B ipconfig setverbose 1
 in order to reveal it.
+If the name is still hidden after that, as can happen on macOS 27,
+the script falls back to the saved networks reported by
+.BR networksetup (8):
+the only one if there is just one, otherwise it asks which one this
+Mac is on.
+The password is always read from the Keychain and is only asked for
+when the Keychain has no entry for that network.
 .TP
 .B Linux
 Detection uses NetworkManager via

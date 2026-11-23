@@ -328,3 +328,154 @@ setup() {
   [[ "$output" != *'$('* ]]
   [[ "$output" != *'`'* ]]
 }
+
+# ---------------- macOS: which network, and its password ----------------
+#
+# These run the whole script against stand-in system commands, so they pass on
+# any OS and never touch the real Keychain or ask for admin rights.
+#
+# The fake Mac reports the current network the way macOS 26+ does: as the
+# placeholder "<redacted>". Writing a name to $FAKE/ssid_with_admin makes the
+# admin step (sudo ipconfig setverbose 1) reveal it, as macOS 26 does.
+# $FAKE/saved is the saved-network list and $FAKE/keychain/NAME holds a
+# password. Anything the script asks the user is answered from $FAKE/tty.
+
+fake_cmd() {
+  printf '#!/bin/bash\n%s\n' "$2" >"$FAKE/bin/$1"
+  chmod +x "$FAKE/bin/$1"
+}
+
+fake_mac() {
+  FAKE="$(mktemp -d)"
+  export FAKE
+  mkdir -p "$FAKE/bin" "$FAKE/keychain"
+  : >"$FAKE/saved"
+  : >"$FAKE/security_calls"
+
+  fake_cmd uname 'echo Darwin'
+  fake_cmd ifconfig 'echo "status: active"'
+  fake_cmd system_profiler 'exit 0'
+  fake_cmd wdutil 'exit 0'
+  fake_cmd sudo '[ "$1" = -n ] && shift; exec "$@"'
+  fake_cmd networksetup '
+case "$1" in
+  -listallhardwareports) printf "Hardware Port: Wi-Fi\nDevice: en0\n" ;;
+  -getairportnetwork) echo "You are not associated with an AirPort network." ;;
+  -listpreferredwirelessnetworks) echo "Preferred networks on en0:"; cat "$FAKE/saved" ;;
+esac'
+  fake_cmd ipconfig '
+if [ "$1" = setverbose ]; then echo "$2" >"$FAKE/verbose"; exit 0; fi
+name="<redacted>"
+if [ "$(cat "$FAKE/verbose" 2>/dev/null)" = 1 ] && [ -f "$FAKE/ssid_with_admin" ]; then
+  name="$(cat "$FAKE/ssid_with_admin")"
+fi
+printf "  BSSID : <redacted>\n  SSID : %s\n  Security : WPA2_PSK\n" "$name"'
+  fake_cmd security '
+echo "$*" >>"$FAKE/security_calls"
+name="${@: -1}"
+if [ ! -f "$FAKE/keychain/$name" ]; then
+  echo "The specified item could not be found in the keychain." >&2
+  exit 44
+fi
+cat "$FAKE/keychain/$name"'
+}
+
+save_networks() {
+  local name
+  for name in "$@"; do printf '\t%s\n' "$name" >>"$FAKE/saved"; done
+}
+
+run_fake_mac() {
+  [ -f "$FAKE/tty" ] || TTY_PATH="$FAKE/no-terminal"
+  run env PATH="$FAKE/bin:$PATH" WIFI_GEN_TTY="${TTY_PATH:-$FAKE/tty}" \
+    bash "${SCRIPT_DIR}/wifi_gen.sh" --print "$@" </dev/null
+}
+
+teardown() {
+  if [ -n "${FAKE:-}" ]; then rm -rf "$FAKE"; fi
+}
+
+@test "mac_clean_ssid: the placeholder macOS prints is not a network name" {
+  run mac_clean_ssid "<redacted>"
+  [ "$output" = "" ]
+  run mac_clean_ssid "Home Net"
+  [ "$output" = "Home Net" ]
+}
+
+@test "mac: a hidden name is never used as the network name" {
+  fake_mac
+  save_networks "Home Net"
+  printf 's3cret' >"$FAKE/keychain/Home Net"
+  run_fake_mac
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"%3Credacted%3E"* ]]
+  [[ "$output" != *"Enter Wi-Fi password"* ]]
+  [[ "$output" == *"ssid=Home%20Net&password=s3cret"* ]]
+  grep -q -- '-wa Home Net$' "$FAKE/security_calls"
+  # One saved network is unambiguous, so admin rights are never requested.
+  [[ "$output" != *"admin"* ]]
+}
+
+@test "mac: a name revealed by the admin step is used and its password read from the Keychain" {
+  fake_mac
+  save_networks "Home Net" "Office"
+  echo "Office" >"$FAKE/ssid_with_admin"
+  printf 'officepw' >"$FAKE/keychain/Office"
+  run_fake_mac
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ssid=Office&password=officepw"* ]]
+  [[ "$output" != *"Network number"* ]]
+}
+
+@test "mac: with several saved networks, the one you pick has its password read from the Keychain" {
+  fake_mac
+  save_networks "Home Net" "Office" "Cafe"
+  printf 'officepw' >"$FAKE/keychain/Office"
+  printf '2\n' >"$FAKE/tty"
+  run_fake_mac
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"1) Home Net"* ]]
+  [[ "$output" == *"3) Cafe"* ]]
+  [[ "$output" == *"ssid=Office&password=officepw"* ]]
+  [[ "$output" != *"Enter Wi-Fi password"* ]]
+}
+
+@test "mac: a choice that is not on the list is asked again" {
+  fake_mac
+  save_networks "Home Net" "Office" "Cafe"
+  printf 'cafepw' >"$FAKE/keychain/Cafe"
+  printf 'x\n0\n9\n3\n' >"$FAKE/tty"
+  run_fake_mac
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ssid=Cafe&password=cafepw"* ]]
+}
+
+@test "mac: several saved networks and no terminal gives advice instead of a password prompt" {
+  fake_mac
+  save_networks "Home Net" "Office"
+  run_fake_mac
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--ssid"* ]]
+  [[ "$output" != *"Enter Wi-Fi password"* ]]
+  [[ "$output" != *"index.html"* ]]
+}
+
+@test "mac: --ssid skips detection and still reads the Keychain" {
+  fake_mac
+  save_networks "Home Net" "Office"
+  printf 'officepw' >"$FAKE/keychain/Office"
+  run_fake_mac --ssid "Office"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ssid=Office&password=officepw"* ]]
+  [[ "$output" != *"hiding"* ]]
+}
+
+@test "mac: only when the Keychain has no entry is the password asked for" {
+  fake_mac
+  save_networks "Home Net"
+  printf 'typed-pw\n' >"$FAKE/tty"
+  run_fake_mac
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Enter Wi-Fi password for 'Home Net'"* ]]
+  [[ "$output" == *"ssid=Home%20Net&password=typed-pw"* ]]
+}

@@ -41,7 +41,8 @@ The script detects your current SSID, security mode, and password, then opens th
 
 **Shell helper (`wifi_gen.sh`)**
 - Cross-platform autodetect: macOS (including Tahoe redaction handling), Linux (NetworkManager / nmcli), Windows (Git Bash / MSYS / Cygwin / WSL via `powershell.exe` + `netsh`)
-- Reads the password from the macOS Keychain when available; falls back to a hidden TTY prompt
+- Reads the password from the macOS Keychain; only prompts for it when the Keychain has no entry
+- When macOS hides the current network's name, picks from your saved networks instead of failing
 - Manual overrides: `--ssid`, `--password`, `--security`, `--hidden`
 - `--print` mode for piping the URL elsewhere
 - Warns when an enterprise / 802.1X profile is detected (Wi-Fi QR codes don't support that flow; see security notes)
@@ -58,7 +59,7 @@ The script detects your current SSID, security mode, and password, then opens th
 
 ## How credentials are detected
 
-- **macOS:** SSID via `networksetup -getairportnetwork`, then `ipconfig getsummary`, then `system_profiler` as a fallback. Recent macOS releases (Ventura+ and especially Tahoe) redact the SSID from non-privileged callers; the script will offer to escalate via `sudo ipconfig setverbose 1` and restore the previous setting on exit. Password comes from the Keychain via `security find-generic-password -wa "$SSID"`, which prompts the user to allow access on first use.
+- **macOS:** SSID via `networksetup -getairportnetwork`, then `ipconfig getsummary`, then `system_profiler` as a fallback. Recent macOS releases (Ventura+ and especially Tahoe) redact the SSID from non-privileged callers; the script will offer to escalate via `sudo ipconfig setverbose 1` and restore the previous setting on exit. Password comes from the Keychain via `security find-generic-password -wa "$SSID"`, which prompts the user to allow access on first use. If the name is still hidden after that, as can happen on macOS 27, the script falls back to your saved networks: it uses the only one if there is just one, and otherwise asks which one you're on. You are only asked to type the Wi-Fi password when the Keychain has no entry for the network. To skip every question, name the network yourself: `wifi_gen.sh --ssid "My Network"`.
 - **Linux:** Active connection name and PSK via `nmcli`. Requires NetworkManager (the default on Ubuntu, Fedora, Debian-with-NM, etc.). Headless / wpa_supplicant-only systems are not supported automatically; pass `--ssid` / `--password` manually.
 - **Windows:** Run from Git Bash, MSYS, Cygwin, or WSL. The script invokes `powershell.exe -NoProfile -Command` to call `netsh wlan show interfaces` (SSID + auth) and `netsh wlan show profile name="<SSID>" key=clear` (password). Note that revealing the key with `netsh` requires the user to be an admin on the box; otherwise the password field will be empty and the script will prompt at the TTY.
 

@@ -25,7 +25,9 @@ cleanup() {
     sudo -n ipconfig setverbose 0 >/dev/null 2>&1 || true
   fi
 }
-trap cleanup EXIT
+
+# Where questions to the user are read from. Tests point this at a file.
+TTY_DEVICE="${WIFI_GEN_TTY:-/dev/tty}"
 
 usage() {
   cat <<EOF
@@ -201,7 +203,7 @@ open_url() {
 prompt_password() {
   local prompt="${1:-Enter Wi-Fi password: }"
   local pw=""
-  if { exec 9</dev/tty; } 2>/dev/null; then
+  if { exec 9<"$TTY_DEVICE"; } 2>/dev/null; then
     printf '%s' "$prompt" >&2
     IFS= read -r -s pw <&9
     exec 9<&-
@@ -270,8 +272,7 @@ list_networks() {
       if ! have networksetup; then
         die_with_help "networksetup not found." "This script supports macOS via /usr/sbin/networksetup. Are you on macOS?"
       fi
-      networksetup -listpreferredwirelessnetworks "$iface" 2>/dev/null \
-        | sed -e '1d' -e 's/^[[:space:]]*//'
+      mac_saved_networks "$iface"
       ;;
     Linux)
       if have nmcli; then
@@ -328,6 +329,50 @@ mac_wifi_interface() {
 mac_iface_is_active() {
   local iface="$1"
   ifconfig "$iface" 2>/dev/null | grep -q "status: active"
+}
+
+# macOS 26+ prints this placeholder where the network name should be. It is
+# never a real name, so treat it as "unknown".
+mac_clean_ssid() {
+  local ssid="${1-}"
+  [[ "$ssid" == "<redacted>" ]] && ssid=""
+  printf '%s\n' "$ssid"
+}
+
+# Networks this Mac has joined before, one per line. Needs no special rights,
+# and each one's password is in the Keychain.
+mac_saved_networks() {
+  local iface="$1"
+  networksetup -listpreferredwirelessnetworks "$iface" 2>/dev/null \
+    | sed -e '1d' -e 's/^[[:space:]]*//' -e '/^$/d'
+}
+
+# Ask which of the given networks this Mac is on and print the answer.
+# Fails if there is no terminal to ask on.
+choose_network() {
+  local choice="" name i=1
+  { exec 9<"$TTY_DEVICE"; } 2>/dev/null || return 1
+  {
+    echo "macOS won't say which Wi-Fi network this Mac is on. Which one is it?"
+    for name in "$@"; do
+      printf '  %d) %s\n' "$i" "$name"
+      i=$((i + 1))
+    done
+  } >&2
+  while true; do
+    printf 'Network number (1-%d): ' "$#" >&2
+    if ! IFS= read -r choice <&9; then
+      exec 9<&-
+      echo "" >&2
+      return 1
+    fi
+    if [[ "$choice" =~ ^[0-9]+$ ]] && ((10#$choice >= 1 && 10#$choice <= $#)); then
+      break
+    fi
+  done
+  exec 9<&-
+  choice=$((10#$choice))
+  printf '%s\n' "${!choice}"
 }
 
 mac_ssid_from_networksetup() {
@@ -563,6 +608,8 @@ if (return 0 2>/dev/null); then
   return 0
 fi
 
+trap cleanup EXIT
+
 SSID=""
 PASSWORD=""
 PASSWORD_SET="false"
@@ -626,25 +673,40 @@ if [[ -z "${SSID}" || -z "${SECURITY}" || -z "${HIDDEN}" || ( -z "${PASSWORD}" &
 
       # SSID: try non-sudo first
       if [[ -z "${SSID}" ]]; then
-        SSID="$(mac_ssid_from_networksetup "$iface" || true)"
-        [[ "$SSID" == "<redacted>" ]] && SSID=""
-        [[ -z "$SSID" ]] && SSID="$(mac_ssid_from_ipconfig "$iface" || true)"
-        [[ "$SSID" == "<redacted>" ]] && SSID=""
-        [[ -z "$SSID" ]] && SSID="$(mac_ssid_from_system_profiler || true)"
-        [[ "$SSID" == "<redacted>" ]] && SSID=""
+        SSID="$(mac_clean_ssid "$(mac_ssid_from_networksetup "$iface" || true)")"
+        [[ -z "$SSID" ]] && SSID="$(mac_clean_ssid "$(mac_ssid_from_ipconfig "$iface" || true)")"
+        [[ -z "$SSID" ]] && SSID="$(mac_clean_ssid "$(mac_ssid_from_system_profiler || true)")"
       fi
 
-      # If still missing, try Tahoe sudo unredact path
+      # Newer macOS hides the name. The list of saved networks is still
+      # readable, and the Keychain has the password for each of them.
+      saved=()
       if [[ -z "${SSID}" ]]; then
-        echo "macOS is hiding the SSID. Requesting admin privileges to reveal it (you may be prompted for your password)." >&2
-        if mac_try_unredact_with_sudo; then
-          SSID="$(mac_ssid_from_ipconfig "$iface" || true)"
+        while IFS= read -r line; do
+          saved+=("$line")
+        done < <(mac_saved_networks "$iface")
+        if [[ ${#saved[@]} -eq 1 ]]; then
+          SSID="${saved[0]}"
+          echo "macOS won't say which network this Mac is on; using the only saved one: $SSID" >&2
         fi
       fi
 
+      # Several candidates: on some macOS versions admin rights reveal the name.
       if [[ -z "${SSID}" ]]; then
-        die_with_help "Could not detect an active Wi-Fi SSID." \
-          "Pass --ssid manually, or check that Wi-Fi is connected: networksetup -getairportnetwork $iface"
+        echo "macOS is hiding the SSID. Requesting admin privileges to reveal it (you may be prompted for your password)." >&2
+        if mac_try_unredact_with_sudo; then
+          SSID="$(mac_clean_ssid "$(mac_ssid_from_ipconfig "$iface" || true)")"
+        fi
+      fi
+
+      # Still hidden. macOS 27 can keep the name from admins as well, so ask.
+      if [[ -z "${SSID}" && ${#saved[@]} -gt 1 ]]; then
+        SSID="$(choose_network "${saved[@]}" || true)"
+      fi
+
+      if [[ -z "${SSID}" ]]; then
+        die_with_help "Could not tell which Wi-Fi network this Mac is on." \
+          "Name it yourself with --ssid NAME (--list-networks shows the saved ones). Its password is then read from the Keychain."
       fi
 
       # Security
