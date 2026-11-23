@@ -317,7 +317,7 @@ setup() {
 @test "generate_qr_url: encodes ssid, password, security, and hidden" {
   run generate_qr_url "WPA" "Cafe & Co" 'Pa$$w&rd' "true"
   [ "$status" -eq 0 ]
-  [ "$output" = 'https://dandanilyuk.github.io/wifi_qr_generator/index.html?security=WPA&ssid=Cafe%20%26%20Co&password=Pa%24%24w%26rd&hidden=true' ]
+  [ "$output" = 'https://dandanilyuk.github.io/wifi_qr_generator/index.html#security=WPA&ssid=Cafe%20%26%20Co&password=Pa%24%24w%26rd&hidden=true' ]
 }
 
 @test "generate_qr_url: command-substitution-looking password is encoded" {

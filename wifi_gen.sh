@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Universal Wi-Fi QR Generator (portable)
-# Opens: https://dandanilyuk.github.io/wifi_qr_generator/index.html?security=...&ssid=...&password=...&hidden=...
+# Opens: https://dandanilyuk.github.io/wifi_qr_generator/index.html#security=...&ssid=...&password=...&hidden=...
 APP_URL="https://dandanilyuk.github.io/wifi_qr_generator/index.html"
 VERSION="0.1.0"
 
@@ -124,7 +124,7 @@ generate_qr_url() {
   u_ssid="$(url_encode "$ssid")"
   u_pass="$(url_encode "$password")"
   u_hidden="$(url_encode "$hidden")"
-  printf "%s?security=%s&ssid=%s&password=%s&hidden=%s\n" \
+  printf "%s#security=%s&ssid=%s&password=%s&hidden=%s\n" \
     "$APP_URL" "$u_sec" "$u_ssid" "$u_pass" "$u_hidden"
 }
 
