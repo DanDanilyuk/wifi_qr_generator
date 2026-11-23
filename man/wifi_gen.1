@@ -43,20 +43,25 @@ Supported platforms:
 Detection uses
 .BR networksetup (8),
 .BR ipconfig (8),
-.BR system_profiler (8),
-and the login Keychain via
+.BR scutil (8),
+.BR osascript (1),
+and the Keychain via
 .BR security (1).
-On recent versions of macOS (Sonoma, Sequoia, Tahoe) the SSID may
-be redacted by default; the script will prompt for
+Since macOS 14.4 the system increasingly reports the name of the
+current network as
+.B <redacted>
+or not at all. The script then works it out without being told: it
+reads the saved Wi-Fi networks, each of which remembers the router it
+was last used with, and picks the one that was joined through the
+router the Mac is talking to now. This needs no arguments, no admin
+rights and no Location Services.
+Only if that finds nothing does it fall back to
+.BR system_profiler (8),
+then to
 .BR sudo (8)
 to temporarily run
-.B ipconfig setverbose 1
-in order to reveal it.
-If the name is still hidden after that, as can happen on macOS 27,
-the script falls back to the saved networks reported by
-.BR networksetup (8):
-the only one if there is just one, otherwise it asks which one this
-Mac is on.
+.BR "ipconfig setverbose 1" ,
+and finally to asking which saved network this Mac is on.
 The password is always read from the Keychain and is only asked for
 when the Keychain has no entry for that network.
 .TP

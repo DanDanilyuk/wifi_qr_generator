@@ -331,12 +331,12 @@ mac_iface_is_active() {
   ifconfig "$iface" 2>/dev/null | grep -q "status: active"
 }
 
-# macOS 26+ prints this placeholder where the network name should be. It is
-# never a real name, so treat it as "unknown".
-mac_clean_ssid() {
-  local ssid="${1-}"
-  [[ "$ssid" == "<redacted>" ]] && ssid=""
-  printf '%s\n' "$ssid"
+# Newer macOS prints the placeholder "<redacted>" where a network name or
+# security type should be. Prints the value, or nothing if it is that.
+mac_visible() {
+  local value="${1-}"
+  [[ "$value" == "<redacted>" ]] && value=""
+  printf '%s\n' "$value"
 }
 
 # Networks this Mac has joined before, one per line. Needs no special rights,
@@ -345,6 +345,88 @@ mac_saved_networks() {
   local iface="$1"
   networksetup -listpreferredwirelessnetworks "$iface" 2>/dev/null \
     | sed -e '1d' -e 's/^[[:space:]]*//' -e '/^$/d'
+}
+
+# The router this Mac is talking to over the given interface, the way macOS
+# records it: "IPv4.Router=<ip>;IPv4.RouterHardwareAddress=<mac>". Needs no
+# special rights.
+mac_network_signature() {
+  local iface="$1" key sig=""
+  while IFS= read -r key; do
+    [[ -z "$key" || -n "$sig" ]] && continue
+    sig="$(printf 'show %s\n' "$key" | scutil 2>/dev/null | awk -v want="$iface" '
+      $1 == "InterfaceName" && $3 == want { hit = 1 }
+      $1 == "NetworkSignature" { sig = $3 }
+      END { if (hit && sig != "") print sig }' || true)"
+  done < <(printf 'list State:/Network/Service/[^/]+/IPv4\n' | scutil 2>/dev/null | awk '{print $NF}' || true)
+  printf '%s\n' "$sig"
+}
+
+# macOS 14.4+ no longer tells a script the name of the network it is on, but
+# it still lets one read the saved networks, and each saved network remembers
+# the router it was last used with. So the current network is the saved one
+# that was joined through the router this Mac is talking to right now.
+# Prints its name, or nothing when no saved network matches. Asks for nothing:
+# no admin rights, no Location Services, no prompt.
+mac_ssid_from_saved_profiles() {
+  local iface="$1" signature
+  have osascript && have scutil || return 0
+  signature="$(mac_network_signature "$iface")"
+  [[ -n "$signature" ]] || return 0
+  osascript -l JavaScript - "$signature" "$iface" 2>/dev/null <<'JXA' || true
+// profiles: [{ name, text }], where text is what macOS prints for a saved
+// network. It lists every access point the network was used with, each
+// starting with when it was joined and including the router it sat behind:
+//   AssociatedAt = "2026-11-23 01:14:03 +0000"; ...
+//   IPv4NetworkSignature = "IPv4.Router=...;IPv4.RouterHardwareAddress=...";
+// Returns the name of the network joined most recently through the router
+// with the given signature, or '' if none was.
+function currentNetwork(profiles, signature) {
+  var wanted = 'IPv4NetworkSignature = "' + signature + '"';
+  var best = '';
+  var bestJoined = '';
+
+  if (!signature) {
+    return '';
+  }
+
+  profiles.forEach(function (profile) {
+    var entries = String(profile.text || '').split('AssociatedAt = "').slice(1);
+
+    entries.forEach(function (entry) {
+      // Times are all "YYYY-MM-DD HH:MM:SS +0000", so they compare as text.
+      var joined = entry.slice(0, entry.indexOf('"'));
+
+      if (profile.name && entry.indexOf(wanted) !== -1 && joined > bestJoined) {
+        best = profile.name;
+        bestJoined = joined;
+      }
+    });
+  });
+
+  return best;
+}
+
+function run(argv) {
+  try {
+    ObjC.import('CoreWLAN');
+
+    var client = $.CWWiFiClient.sharedWiFiClient;
+    var saved = client.interfaceWithName(argv[1]).configuration.networkProfiles.array;
+    var profiles = [];
+
+    for (var i = 0; i < saved.count; i++) {
+      var item = saved.objectAtIndex(i);
+
+      profiles.push({ name: item.ssid.js, text: item.description.js });
+    }
+
+    return currentNetwork(profiles, argv[0]);
+  } catch (error) {
+    return '';
+  }
+}
+JXA
 }
 
 # Ask which of the given networks this Mac is on and print the answer.
@@ -395,8 +477,9 @@ mac_ssid_from_ipconfig() {
 
 mac_auth_from_ipconfig() {
   local iface="$1"
+  # Older macOS prints "auth type : ...", newer prints "Security : ...".
   ipconfig getsummary "$iface" 2>/dev/null \
-    | awk -F': ' '/ auth type /{print $2; exit}' \
+    | awk -F': ' '/ auth type |^[[:space:]]*Security[[:space:]]*:/{print $2; exit}' \
     | sed 's/[[:space:]]*$//'
 }
 
@@ -673,13 +756,15 @@ if [[ -z "${SSID}" || -z "${SECURITY}" || -z "${HIDDEN}" || ( -z "${PASSWORD}" &
 
       # SSID: try non-sudo first
       if [[ -z "${SSID}" ]]; then
-        SSID="$(mac_clean_ssid "$(mac_ssid_from_networksetup "$iface" || true)")"
-        [[ -z "$SSID" ]] && SSID="$(mac_clean_ssid "$(mac_ssid_from_ipconfig "$iface" || true)")"
-        [[ -z "$SSID" ]] && SSID="$(mac_clean_ssid "$(mac_ssid_from_system_profiler || true)")"
+        SSID="$(mac_visible "$(mac_ssid_from_networksetup "$iface" || true)")"
+        [[ -z "$SSID" ]] && SSID="$(mac_visible "$(mac_ssid_from_ipconfig "$iface" || true)")"
+        [[ -z "$SSID" ]] && SSID="$(mac_ssid_from_saved_profiles "$iface" || true)"
+        # Last of the unprivileged sources: it can take 15+ seconds.
+        [[ -z "$SSID" ]] && SSID="$(mac_visible "$(mac_ssid_from_system_profiler || true)")"
       fi
 
-      # Newer macOS hides the name. The list of saved networks is still
-      # readable, and the Keychain has the password for each of them.
+      # No saved network matched the router in use. The list of saved
+      # networks is still readable, and the Keychain has each one's password.
       saved=()
       if [[ -z "${SSID}" ]]; then
         while IFS= read -r line; do
@@ -695,11 +780,11 @@ if [[ -z "${SSID}" || -z "${SECURITY}" || -z "${HIDDEN}" || ( -z "${PASSWORD}" &
       if [[ -z "${SSID}" ]]; then
         echo "macOS is hiding the SSID. Requesting admin privileges to reveal it (you may be prompted for your password)." >&2
         if mac_try_unredact_with_sudo; then
-          SSID="$(mac_clean_ssid "$(mac_ssid_from_ipconfig "$iface" || true)")"
+          SSID="$(mac_visible "$(mac_ssid_from_ipconfig "$iface" || true)")"
         fi
       fi
 
-      # Still hidden. macOS 27 can keep the name from admins as well, so ask.
+      # Still hidden (macOS 27 can keep it from admins as well): last resort, ask.
       if [[ -z "${SSID}" && ${#saved[@]} -gt 1 ]]; then
         SSID="$(choose_network "${saved[@]}" || true)"
       fi
@@ -711,7 +796,7 @@ if [[ -z "${SSID}" || -z "${SECURITY}" || -z "${HIDDEN}" || ( -z "${PASSWORD}" &
 
       # Security
       if [[ -z "${SECURITY}" ]]; then
-        raw="$(mac_auth_from_ipconfig "$iface" || true)"
+        raw="$(mac_visible "$(mac_auth_from_ipconfig "$iface" || true)")"
         if [[ -z "$raw" ]]; then
           raw="$(mac_auth_from_wdutil || true)"
         fi

@@ -335,10 +335,14 @@ setup() {
 # any OS and never touch the real Keychain or ask for admin rights.
 #
 # The fake Mac reports the current network the way macOS 26+ does: as the
-# placeholder "<redacted>". Writing a name to $FAKE/ssid_with_admin makes the
-# admin step (sudo ipconfig setverbose 1) reveal it, as macOS 26 does.
-# $FAKE/saved is the saved-network list and $FAKE/keychain/NAME holds a
-# password. Anything the script asks the user is answered from $FAKE/tty.
+# placeholder "<redacted>".
+#   $FAKE/saved             the saved-network list
+#   $FAKE/keychain/NAME     that network's password
+#   $FAKE/current_by_router the saved network whose remembered router matches
+#                           the one in use (what the profile lookup returns)
+#   $FAKE/ssid_with_admin   a name the admin step (sudo ipconfig setverbose 1)
+#                           reveals, as macOS 26 does
+#   $FAKE/tty               answers to anything the script asks the user
 
 fake_cmd() {
   printf '#!/bin/bash\n%s\n' "$2" >"$FAKE/bin/$1"
@@ -354,9 +358,16 @@ fake_mac() {
 
   fake_cmd uname 'echo Darwin'
   fake_cmd ifconfig 'echo "status: active"'
-  fake_cmd system_profiler 'exit 0'
+  fake_cmd system_profiler 'echo called >>"$FAKE/system_profiler_calls"'
   fake_cmd wdutil 'exit 0'
-  fake_cmd sudo '[ "$1" = -n ] && shift; exec "$@"'
+  fake_cmd sudo 'echo "sudo $*" >>"$FAKE/sudo_calls"; [ "$1" = -n ] && shift; exec "$@"'
+  fake_cmd scutil '
+cat >/dev/null
+printf "  InterfaceName : en0\n  NetworkSignature : IPv4.Router=10.0.0.1;IPv4.RouterHardwareAddress=aa:bb:cc:dd:ee:ff\n"'
+  fake_cmd osascript '
+cat >/dev/null
+echo "$*" >"$FAKE/osascript_args"
+cat "$FAKE/current_by_router" 2>/dev/null || echo'
   fake_cmd networksetup '
 case "$1" in
   -listallhardwareports) printf "Hardware Port: Wi-Fi\nDevice: en0\n" ;;
@@ -395,10 +406,10 @@ teardown() {
   if [ -n "${FAKE:-}" ]; then rm -rf "$FAKE"; fi
 }
 
-@test "mac_clean_ssid: the placeholder macOS prints is not a network name" {
-  run mac_clean_ssid "<redacted>"
+@test "mac_visible: the placeholder macOS prints is not a value" {
+  run mac_visible "<redacted>"
   [ "$output" = "" ]
-  run mac_clean_ssid "Home Net"
+  run mac_visible "Home Net"
   [ "$output" = "Home Net" ]
 }
 
@@ -414,6 +425,33 @@ teardown() {
   grep -q -- '-wa Home Net$' "$FAKE/security_calls"
   # One saved network is unambiguous, so admin rights are never requested.
   [[ "$output" != *"admin"* ]]
+}
+
+@test "mac: the saved network on the router in use is found with no questions and no admin rights" {
+  fake_mac
+  save_networks "Home Net" "Office" "Cafe"
+  echo "Office" >"$FAKE/current_by_router"
+  printf 'officepw' >"$FAKE/keychain/Office"
+  run_fake_mac
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ssid=Office&password=officepw"* ]]
+  [[ "$output" != *"Network number"* ]]
+  [[ "$output" != *"Enter Wi-Fi password"* ]]
+  [ ! -e "$FAKE/sudo_calls" ] || ! grep -q 'setverbose' "$FAKE/sudo_calls"
+  # The lookup is told which router and which interface to match.
+  grep -q 'IPv4.Router=10.0.0.1;IPv4.RouterHardwareAddress=aa:bb:cc:dd:ee:ff en0' "$FAKE/osascript_args"
+}
+
+@test "mac: the usual path never runs system_profiler, which can take 15+ seconds a call" {
+  fake_mac
+  save_networks "Home Net" "Office"
+  echo "Office" >"$FAKE/current_by_router"
+  printf 'officepw' >"$FAKE/keychain/Office"
+  run_fake_mac
+  [ "$status" -eq 0 ]
+  # The security type comes from ipconfig's "Security : WPA2_PSK" line.
+  [[ "$output" == *"security=WPA2&ssid=Office&password=officepw"* ]]
+  [ ! -e "$FAKE/system_profiler_calls" ]
 }
 
 @test "mac: a name revealed by the admin step is used and its password read from the Keychain" {
